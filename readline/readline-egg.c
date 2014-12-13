@@ -3,6 +3,7 @@
 // 
 // Copyright (c) 2002 Tony Garnock-Jones
 // Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
+// Copyright (c) 2014 Alexej Magura (added a lot of history functions and more)
 // 
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -179,7 +180,7 @@ char *gnu_readline_tab_complete(const char *text, int status) {
 
 ////\\\\//// Other Stuff ////\\\\////
 
-/*
+#if 0
 // This is code that is supposed to alter the behaviour of ctrl-w so that it recognizes
 // parens as delimiters.  It works, but I can't bind it to ctrl-w, because that key code 
 // is intercepted by the terminal (I think).
@@ -218,7 +219,7 @@ int gnu_readline_lisp_word_rubout(int count, int key)
 
 	return 0;
 }
-*/
+#endif
 
 /*  grants access to the gnu_history_newlines variable.
  *  
@@ -228,62 +229,62 @@ int gnu_readline_lisp_word_rubout(int count, int key)
  */
 int gnu_history_new_lines()
 {
-    return gnu_history_newlines;
+  return gnu_history_newlines;
 }
 
 int gnu_readline_append_history(char *filename)
 {
-    return append_history(gnu_history_newlines, filename);
+  return append_history(gnu_history_newlines, filename);
 }
 
 
 // Set everything up
 void gnu_readline_init()
 {
-	using_history();
-	rl_bind_key(')', gnu_readline_paren_bounce);
- 	rl_bind_key(']', gnu_readline_paren_bounce);
-	rl_completion_entry_function = &gnu_readline_tab_complete;
-        rl_variable_bind("rl_catch_signals", 0);
-        rl_clear_signals();
-        rl_set_signals();
-        rl_completer_quote_characters = "\"";
-        
-	//rl_add_defun ("lisp-word-rubout" , gnu_readline_lisp_word_rubout, -1);
+  using_history();
+  rl_bind_key(')', gnu_readline_paren_bounce);
+  rl_bind_key(']', gnu_readline_paren_bounce);
+  rl_completion_entry_function = &gnu_readline_tab_complete;
+  rl_variable_bind("rl_catch_signals", 0);
+  rl_clear_signals();
+  rl_set_signals();
+  rl_completer_quote_characters = "\"";
+
+  //rl_add_defun ("lisp-word-rubout" , gnu_readline_lisp_word_rubout, -1);
 }
 
 
 // Called from scheme to get user input
 char *gnu_readline_readline(char *prompt, char *prompt2)
 {
-	char *empty_prompt;
-	int prompt_len;
-	HIST_ENTRY *h;
+  char *empty_prompt;
+  int prompt_len;
+  HIST_ENTRY *h;
 
-	if (gnu_readline_buf != NULL) {
-		free(gnu_readline_buf);
-		gnu_readline_buf = NULL;
-	}
+  if (gnu_readline_buf != NULL) {
+    free(gnu_readline_buf);
+    gnu_readline_buf = NULL;
+  }
 
-	if ((gnu_readline_paren_balance || gnu_readline_brace_balance) == 0) 
-		gnu_readline_buf = readline(prompt);
-	else
-		gnu_readline_buf = readline(prompt2);
+  if ((gnu_readline_paren_balance || gnu_readline_brace_balance) == 0) 
+    gnu_readline_buf = readline(prompt);
+  else
+    gnu_readline_buf = readline(prompt2);
 
-	if (gnu_readline_buf != NULL && *gnu_readline_buf != '\0') {
-		h = history_get(history_base + history_length - 1);
-		if (NULL == h || 0 != strcmp(h->line, gnu_readline_buf)) {
-			add_history(gnu_readline_buf);
-                        ++gnu_history_newlines;
-		}
-	}
+  if (gnu_readline_buf != NULL && *gnu_readline_buf != '\0') {
+    h = history_get(history_base + history_length - 1);
+    if (NULL == h || 0 != strcmp(h->line, gnu_readline_buf)) {
+      add_history(gnu_readline_buf);
+      ++gnu_history_newlines;
+    }
+  }
 
-	gnu_readline_paren_balance += gnu_readline_match_balance('(', ')');
-	gnu_readline_brace_balance += gnu_readline_match_balance('[', ']');
-	if (gnu_readline_paren_balance < 0 || gnu_readline_brace_balance < 0)
-		gnu_readline_clear_balances();
+  gnu_readline_paren_balance += gnu_readline_match_balance('(', ')');
+  gnu_readline_brace_balance += gnu_readline_match_balance('[', ']');
+  if (gnu_readline_paren_balance < 0 || gnu_readline_brace_balance < 0)
+    gnu_readline_clear_balances();
 
-	return(gnu_readline_buf);
+  return(gnu_readline_buf);
 }
 
 void gnu_readline_signal_cleanup()
@@ -298,7 +299,6 @@ void gnu_readline_signal_cleanup()
 char *gnu_history_lineat_current()
 {
   HIST_ENTRY *entry = NULL;
-
   entry = current_history();
 
   // did the operation succeed?
@@ -339,33 +339,30 @@ char *gnu_history_list() /* may look a bit messy, but it seems to work great ;D 
   HIST_ENTRY **hist_list = history_list();
   char result_buf[BUFSIZ];
   char *result_buf_ptr = result_buf;
+  int idx;
+
 #if _HAVE_LIBBSD
 #else
   *result_buf = '\0';
 #endif
-  int idx;
+
+#if _HAVE_LIBBSD
+#define _CHK_READLINE_EGG_STRCAT(dst_str, src_str) strlcat(dst_str, src_str, sizeof dst_str)
+#define _CHK_READLINE_EGG_STRCPY(dst_str, src_str) strlcpy(dst_str, src_str, sizeof dst_str)
+#else
+#define _CHK_READLINE_EGG_STRCAT(dst_str, src_str) strncat(dst_str, src_str, (sizeof dst_str - strlen(dst_str) - 1))
+#define _CHK_READLINE_EGG_STRCPY(dst_str, src_str) _CHK_READLINE_EGG_STRCAT(dst_str, src_str)
+#endif
 
   if (hist_list == NULL)
     return NULL;
 
-#if _HAVE_LIBBSD
-  //fprintf(stderr, "%s\n", "using strlcpy and strlcat");
-  strlcpy(result_buf, hist_list[0]->line, sizeof result_buf);
-  strlcat(result_buf, "\n", sizeof result_buf);
-#else
-  //fprintf(stderr, "%s\n", "using strncat");
-  strncat(result_buf, hist_list[0]->line, (sizeof result_buf - strlen(result_buf) - 1));
-  strncat(result_buf, "\n", (sizeof result_buf - strlen(result_buf) - 1));
-#endif
+  _CHK_READLINE_EGG_STRCPY(result_buf, hist_list[0]->line);
+  _CHK_READLINE_EGG_STRCAT(result_buf, "\n");
 
   for (idx = 1; idx < history_length; ++idx) {
-#if _HAVE_LIBBSD
-    strlcat(result_buf, hist_list[idx]->line, sizeof result_buf);
-    strlcat(result_buf, "\n", sizeof result_buf);
-#else
-    strncat(result_buf, hist_list[idx]->line, (sizeof result_buf - strlen(result_buf) - 1));
-    strncat(result_buf, "\n", (sizeof result_buf - strlen(result_buf) - 1));
-#endif
+    _CHK_READLINE_EGG_STRCAT(result_buf, hist_list[idx]->line);
+    _CHK_READLINE_EGG_STRCAT(result_buf, "\n");
   }
   return result_buf_ptr;
 }
@@ -373,7 +370,6 @@ char *gnu_history_list() /* may look a bit messy, but it seems to work great ;D 
 char *gnu_history_timeat_current()
 {
   HIST_ENTRY *entry = NULL;
-  
   entry = current_history();
 
   if (entry == NULL || entry->timestamp[0] == '\0')
