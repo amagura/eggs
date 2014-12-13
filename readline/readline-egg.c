@@ -25,6 +25,11 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+#if _HAVE_LIBBSD
+#include <bsd/string.h>
+#endif
+
+
 static char *gnu_readline_buf = NULL;
 static int gnu_readline_bounce_ms = 500;
 static int gnu_readline_paren_balance = 0;
@@ -37,106 +42,101 @@ static int gnu_history_newlines = 0;
             (if negative) the number of unmatched closing parens */
 int gnu_readline_skip(int pos, int open_key, int close_key)
 {
-	while (--pos > -1) {
-		if (pos > 0 && rl_line_buffer[pos - 1] == '\\') {
-			continue;
-		} else if (rl_line_buffer[pos] == open_key) {
-			return pos;
-		} else if (rl_line_buffer[pos] == close_key) {
-			pos = gnu_readline_skip(pos, open_key, close_key);
-		} else if (rl_line_buffer[pos] == '"') {
-			pos = gnu_readline_skip(pos, '"', '"');
-		}
-	}
-	return pos;
+  while (--pos > -1) {
+    if (pos > 0 && rl_line_buffer[pos - 1] == '\\') {
+      continue;
+    } else if (rl_line_buffer[pos] == open_key) {
+      return pos;
+    } else if (rl_line_buffer[pos] == close_key) {
+      pos = gnu_readline_skip(pos, open_key, close_key);
+    } else if (rl_line_buffer[pos] == '"') {
+      pos = gnu_readline_skip(pos, '"', '"');
+    }
+  }
+  return pos;
 }
 
 // Return what the balance is between opening and closing keys
 int gnu_readline_match_balance(int open_key, int close_key)
 {
-	int pos;
-	int open = 0;
+  int pos;
+  int open = 0;
 
-	// Can't use rl_end intead of strlen: gives length of whole buffer
-	pos = gnu_readline_skip(strlen(rl_line_buffer), open_key, close_key);
-	if (pos < 0)
-		return pos + 1;
-
-	while (pos >= 0) {
-		open++;
-		pos = gnu_readline_skip(pos, open_key, close_key);
-	}
-
-	return open;
+  // Can't use rl_end intead of strlen: gives length of whole buffer
+  pos = gnu_readline_skip(strlen(rl_line_buffer), open_key, close_key);
+  if (pos < 0)
+    return pos + 1;
+  while (pos >= 0) {
+    ++open;
+    pos = gnu_readline_skip(pos, open_key, close_key);
+  }
+  return open;
 }
 
 // Resets the global vars that track paren balance
 void gnu_readline_clear_balances()
 {
-	gnu_readline_paren_balance = 0;
-	gnu_readline_brace_balance = 0;
+  gnu_readline_paren_balance = 0;
+  gnu_readline_brace_balance = 0;
 }
 
 
 // Finds the matching paren (starting from just left of the cursor)
 int gnu_readline_find_match(int key)
 {
-	if (key == ')')
-		return gnu_readline_skip(rl_point - 1, '(', ')');
-	else if (key == ']')
-		return gnu_readline_skip(rl_point - 1, '[', ']');
-	
-	return 0; 
+  if (key == ')')
+    return gnu_readline_skip(rl_point - 1, '(', ')');
+  else if (key == ']')
+    return gnu_readline_skip(rl_point - 1, '[', ']');
+  return 0; 
 }
 
 // Delays, but returns early if key press occurs 
-void gnu_readline_timid_delay(ms)
+void gnu_readline_timid_delay(int ms)
 {
-	struct pollfd pfd;
-	
-	pfd.fd = fileno(rl_instream);
-	pfd.events = POLLIN || POLLPRI;
-	pfd.revents = 0;
-	
-	poll(&pfd, 1, ms);
+  struct pollfd pfd;
+
+  pfd.fd = fileno(rl_instream);
+  pfd.events = POLLIN || POLLPRI;
+  pfd.revents = 0;
+
+  poll(&pfd, 1, ms);
 }
 
 // Bounces the cursor to the matching paren for a while
 int gnu_readline_paren_bounce(int count, int key)
 {
-	int insert_success;
-	int old_point;
-	int matching;
+  int insert_success, old_point, matching;
+  if (gnu_readline_bounce_ms == 0)
+    return 0;
+  
+  // Write the just entered paren out first
+  insert_success = rl_insert(count, key);
+  if (insert_success != 0)
+    return insert_success;
+  rl_redisplay();
 
-	if (gnu_readline_bounce_ms == 0)
-		return 0;
+  // Need at least two chars to bounce...
+  if (rl_point < 2) // rl_point set to next char (implicit +1)
+    return 0;
 
-	// Write the just entered paren out first
-	insert_success = rl_insert(count, key);
-	if (insert_success != 0)
-		return insert_success;
-	rl_redisplay();
+  // If it's an escaped paren, don't bounce...
+  if (rl_line_buffer[rl_point - 2] == '\\')
+    return 0;
 
-	// Need at least two chars to bounce...
-	if (rl_point < 2) // rl_point set to next char (implicit +1)
-		return 0;
+  // Bounce
+  old_point = rl_point;
+  matching = gnu_readline_find_match(key);
+  if (matching < 0)
+    return 0;
+  else
+    rl_point = matching;
 
-	// If it's an escaped paren, don't bounce...
-	if (rl_line_buffer[rl_point - 2] == '\\')
-		return 0;
+  rl_redisplay();
+  gnu_readline_timid_delay(gnu_readline_bounce_ms);
+  rl_point = old_point;
 
-	// Bounce
-	old_point = rl_point;
-	matching = gnu_readline_find_match(key);
-	if (matching < 0)
-		return 0;
-	else
-		rl_point = matching;
-	rl_redisplay();
-	gnu_readline_timid_delay(gnu_readline_bounce_ms);
-	rl_point = old_point;
-
-	return 0;
+  return 0;
 }
 
 
@@ -147,33 +147,33 @@ C_word gnu_readline_scm_complete(char *, int, int);
 
 // Gets called (repeatedly) when readline tries to do a completion
 char *gnu_readline_tab_complete(const char *text, int status) {
-	C_word result;
-	char *str;
-	int len;
-	char *copied_str; 
+  C_word result;
+  char *str;
+  int len;
+  char *copied_str; 
 
-	/* All of this is for older versions of chicken (< 2.3), which don't 
-	   reliably null-terminate strings */
+  /* All of this is for older versions of chicken (< 2.3), which don't 
+     reliably null-terminate strings */
 
-	// Get scheme string for possible completion via callback
-	result = gnu_readline_scm_complete((char *)text, strlen(text), status);
+  // Get scheme string for possible completion via callback
+  result = gnu_readline_scm_complete((char *)text, strlen(text), status);
 
-	if (result == C_SCHEME_FALSE) 
-		return NULL;
+  if (result == C_SCHEME_FALSE) 
+    return NULL;
 
-	// Convert into C types
-	str = C_c_string(result);
-	len = C_num_to_int(C_i_string_length(result));
+  // Convert into C types
+  str = C_c_string(result);
+  len = C_num_to_int(C_i_string_length(result));
 
-	if (len == 0)
-		return NULL;
+  if (len == 0)
+    return NULL;
 
-	// Copy (note: the readline lib frees this copy)
-	copied_str = (char *)malloc(len + 1);
-	strncpy(copied_str, str, len);
-	copied_str[len] = '\0';
+  // Copy (note: the readline lib frees this copy)
+  copied_str = (char *)malloc(len + 1);
+  strncpy(copied_str, str, len);
+  copied_str[len] = '\0';
 
-  	return copied_str;
+  return copied_str;
 }
 
 
@@ -220,6 +220,12 @@ int gnu_readline_lisp_word_rubout(int count, int key)
 }
 */
 
+/*  grants access to the gnu_history_newlines variable.
+ *  
+ *  XXX using a `define-foreign-variable' to gain access to gnu_history_newlines won't work as expected.
+ *  I don't _know_ this, but I suspect it's because it only grabs a snapshot of the variable and is not
+ *  actually binding itself _to the variable_ 
+ */
 int gnu_history_new_lines()
 {
     return gnu_history_newlines;
@@ -268,7 +274,7 @@ char *gnu_readline_readline(char *prompt, char *prompt2)
 		h = history_get(history_base + history_length - 1);
 		if (NULL == h || 0 != strcmp(h->line, gnu_readline_buf)) {
 			add_history(gnu_readline_buf);
-                        gnu_history_newlines++;
+                        ++gnu_history_newlines;
 		}
 	}
 
@@ -287,4 +293,95 @@ void gnu_readline_signal_cleanup()
     gnu_readline_buf = NULL;
     rl_free_line_state();
     rl_cleanup_after_signal();
+}
+
+char *gnu_history_lineat_current()
+{
+  HIST_ENTRY *entry = NULL;
+
+  entry = current_history();
+
+  // did the operation succeed?
+  if (entry == NULL)
+    return NULL; // no
+  return entry->line; // yes
+}
+
+int gnu_history_goto_offset(int offset, int relative)
+{
+  if (relative)
+    offset += where_history();
+
+  return history_set_pos(offset);
+}
+
+/* gives you the timestamp, if any, for the history entry at the offset in history_list */
+char *gnu_history_timeat_offset(int offset)
+{
+  HIST_ENTRY *entry = NULL;
+  char *result = NULL;
+  int current_offset = where_history();
+
+  if (gnu_history_goto_offset(offset, 0))
+    entry = current_history();
+
+  result = (entry == NULL || entry->timestamp[0] == '\0')
+    ? NULL
+    : entry->timestamp;
+
+  gnu_history_goto_offset(current_offset, 0);
+  return result;
+}
+
+/* safely concatenates the history_list's entry strings and returns them via a pointer */
+char *gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
+{
+  HIST_ENTRY **hist_list = history_list();
+  char result_buf[BUFSIZ];
+  char *result_buf_ptr = result_buf;
+#if _HAVE_LIBBSD
+#else
+  *result_buf = '\0';
+#endif
+  int idx;
+
+  if (hist_list == NULL)
+    return NULL;
+
+#if _HAVE_LIBBSD
+  //fprintf(stderr, "%s\n", "using strlcpy and strlcat");
+  strlcpy(result_buf, hist_list[0]->line, sizeof result_buf);
+  strlcat(result_buf, "\n", sizeof result_buf);
+#else
+  //fprintf(stderr, "%s\n", "using strncat");
+  strncat(result_buf, hist_list[0]->line, (sizeof result_buf - strlen(result_buf) - 1));
+  strncat(result_buf, "\n", (sizeof result_buf - strlen(result_buf) - 1));
+#endif
+
+  for (idx = 1; idx < history_length; ++idx) {
+#if _HAVE_LIBBSD
+    strlcat(result_buf, hist_list[idx]->line, sizeof result_buf);
+    strlcat(result_buf, "\n", sizeof result_buf);
+#else
+    strncat(result_buf, hist_list[idx]->line, (sizeof result_buf - strlen(result_buf) - 1));
+    strncat(result_buf, "\n", (sizeof result_buf - strlen(result_buf) - 1));
+#endif
+  }
+  return result_buf_ptr;
+}
+
+char *gnu_history_timeat_current()
+{
+  HIST_ENTRY *entry = NULL;
+  
+  entry = current_history();
+
+  if (entry == NULL || entry->timestamp[0] == '\0')
+    return NULL;
+  return entry->timestamp;
+}
+
+int gnu_history_list_length()
+{
+  return history_length;
 }

@@ -78,7 +78,8 @@
 
 TODO:
 - C-w terminal thingy
-- tab completion with procedure info 
+- tab completion with procedure inf
+- ! history completion (if even possible) i.e. !0 = first line of history
 
 |#
 
@@ -102,6 +103,17 @@ TODO:
      gnu-readline-truncate-history
      gnu-history-new-lines
      gnu-history-install-file-manager
+     gnu-history-list-length
+     ;gnu-history-list ; FIXME
+     
+     gnu-history-current-entry-line
+     gnu-history-current-entry-time
+     gnu-history-goto-entry
+     gnu-history-position
+
+     gnu-search-history
+     gnu-search-history-forward
+     gnu-search-history-backward
  
      gnu-readline-parse-and-bind
      gnu-readline-set-bounce-ms
@@ -162,12 +174,81 @@ TODO:
 (define gnu-readline-append-history
     (foreign-lambda int "gnu_readline_append_history" c-string))
 
-;;; (gnu-readline-truncate-history <filename-or-false> <numlines>) -> 0 succ, errno fail
+;; (gnu-readline-truncate-history <filename-or-false> <numlines>) -> 0 succ, errno fail
 (define gnu-readline-truncate-history
   (foreign-lambda int "history_truncate_file" c-string int))
 
 (define gnu-history-new-lines
     (foreign-lambda int "gnu_history_new_lines"))
+
+(define gnu-history-entry-time
+  (foreign-lambda c-string "gnu_history_timeat_offset" int))
+
+(define gnu-history-current-entry-line
+  (foreign-lambda c-string "gnu_history_lineat_current"))
+
+(define gnu-history-current-entry-time
+  (foreign-lambda c-string "gnu_history_timeat_current"))
+
+(define (gnu-history-goto-entry offset #!optional relative)
+  (define result ((foreign-lambda bool "gnu_history_goto_offset" int bool) offset relative))
+  (if result
+    (list
+      line: ((foreign-lambda c-string "gnu_history_lineat_current"))
+      index: (gnu-history-position))
+    result))
+          
+
+
+;; (gnu-history-search "string" -1) -> search through previous entries
+;; (gnu-history-search "string" 0+) -> search through subsequent entries.
+;; returns match on succ, #f on fail.
+;; XXX use `(get-keyword)' to access offset:, match:, and index:
+;; XXX `index:' corresponds to the history-position within history_list of the match
+(define (gnu-search-history string direction)
+  (define offset ((foreign-lambda int "history_search" c-string int)
+                  string direction))
+  (if (= offset -1)
+    #f
+    (list offset: offset
+          match: ((foreign-lambda c-string "gnu_history_lineat_current"))
+          index: (gnu-history-position))))
+
+(define (gnu-search-history-backward string)
+  (gnu-search-history string -1))
+
+(define (gnu-search-history-forward string)
+  (gnu-search-history string 0))
+
+(define gnu-history-list-length
+  (foreign-lambda int "gnu_history_list_length"))
+
+#| the underlying c-function works, but the scheme binding to said function is buggy.
+ I just can't seem to get this function to do what I want it to do. :(
+ it's supposed to take a string of history entries and transform it like so:
+
+ "a\nb\nc\nd" -> ((1 . "a") (2 . "b") (3 . "c") (4 . "d"))
+
+ |#
+#;(define (gnu-history-list) ; FIXME
+  (let* ((history-list-string ((foreign-lambda c-string "gnu_history_list")))
+         (history-list (if (string? history-list-string)
+                         (string-split history-list-string "\n")
+                         '()))
+        (history-length (- (gnu-history-list-length) 1))
+        (lst '()))
+    (do ((idx 0 (+ idx 1)))
+      ((= history-length idx) lst)
+      (set! lst (append lst (list (+ idx 1) . (car history-list))))
+      (set! history-list (cdr history-list)))))
+  
+
+;; (gnu-history-position pos) -> sets the current history position: 0 succ, 1 fail
+;; (gnu-history-position) -> current history position within history_list
+(define (gnu-history-position #!optional pos)
+  (if pos
+    (gnu-history-goto-entry pos #t)
+    ((foreign-lambda int "where_history"))))
 
 ;; Useful...
 (define gnu-readline-parse-and-bind
