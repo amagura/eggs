@@ -57,6 +57,17 @@ test-release: sure doc
 	  cd ..; \
 	  echo $(version)
 
+dist-clean: clean
+	cd ${startdir}/../tags; \
+	  find ./ -name '*.so' -delete; \
+	  find ./ -name '*.o' -delete; \
+	  find ./ -name '*.out' -delete; \
+	  find ./ -name '*.log' -delete; \
+	  find ./ -name 'readline.c' -delete; \
+	  find ./ -name 'readline.import.scm' -delete; \
+	  find ./ -name 'readline-test' -delete; \
+	  find ./ -name 'temp*' -delete
+
 
 doc:
 	#cd ${startdir}; \
