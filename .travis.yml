@@ -4,10 +4,10 @@ compiler:
   - gcc-4.4
   - gcc-4.7
 install:
-  - echo 'deb http://ftp.it.debian.org/debian unstable main contrib non-free' | sudo tee -a /etc/apt/sources.list
+  #- echo 'deb http://ftp.it.debian.org/debian unstable main contrib non-free' | sudo tee -a /etc/apt/sources.list
   #- echo 'deb http://debian.fastweb.it/debian wheezy main contrib non-free' | sudo tee -a /etc/apt/sources.list
-  - sudo apt-get update
-  - sudo apt-get -t precise install gcc-4.4 gcc-4.7
-  - sudo apt-get -t unstable install libchicken-dev libchicken7 chicken-bin --force-yes
+  - sudo apt-get dist-upgrade --force-yes
+  - sudo apt-get install gcc-4.4 gcc-4.7
+  - sudo apt-get install libchicken-dev libchicken7 chicken-bin
 script:
   - cd readline && cd trunk && sudo CSC_OPTIONS=-cc\ $CC chicken-install -trunk -s
