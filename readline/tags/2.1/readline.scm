@@ -5,6 +5,7 @@
 ;
 ; Copyright (c) 2002 Tony Garnock-Jones
 ; Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
+; Copyright (c) 2014 Alexej Magura (most of the history functions)
 ;
 ; This program is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -27,31 +28,18 @@
 ; following lines in your ~/.csirc:
 ;
 ;   (require 'readline)
-;   (current-input-port (make-gnu-readline-port "csi> "))
+;   (current-input-port (readline#make-readline-port "csi> "))
 ;
 ; If you also want to make the command history span sessions, add the
 ; following:
 ;
-;   (gnu-history-install-file-manager (string-append (or (getenv "HOME") ".") "/.csi.history"))
+;   (readline#history-install-file-manager (string-append (or (getenv "HOME") ".") "/.csi.history"))
 ;
 ; By default this will save 1000 lines of history between sessions (it
 ; will prune the history file to 1000 lines at startup). For a
 ; different history size, pass the desired number of lines as the
 ; (optional) second argument to gnu-history-install-file-manager. If
 ; #f is passed in, no history-file-pruning will take place.
-;
-;
-; Esoteric Options
-; -----------------
-;
-; To change the bouncing parenthesis time (default is 500ms):
-;
-; (gnu-readline-set-bounce-ms 1000) 
-;
-; To turn it off completely:
-;
-; (gnu-readline-set-bounce-ms 0) 
-;
 ;
 ; To pass configuration options to readline (see the readline manual page for 
 ; details):
@@ -74,16 +62,6 @@
 ;	  (set! history-count (+ 1 history-count)) 
 ;	  (sprintf "#;~A> " hist))))
 
-#|
-
-TODO:
-- C-w terminal thingy
-- tab completion with procedure inf
-- ! history completion (if even possible) i.e. !0 = first line of history
-
-|#
-
-
 (declare
  (usual-integrations))
 
@@ -92,61 +70,48 @@ TODO:
 (define ##readline#repl-prompt repl-prompt)
 
 (module readline
- 
-    (gnu-readline
-     make-gnu-readline-port
-     %gnu-readline-signal-cleanup
-     gnu-readline-clear-history
-     gnu-readline-read-history
-     gnu-readline-write-history
-     gnu-readline-append-history
-     gnu-readline-truncate-history
-     gnu-history-new-lines
-     gnu-history-install-file-manager
-     gnu-history-list-length
-     ;gnu-history-list ; FIXME
-     
-     gnu-history-current-entry-line
-     gnu-history-current-entry-time
-     gnu-history-goto-entry
-     gnu-history-position
+  (export
+    readline
+    make-readline-port
+    %signal-cleanup
+    clear-history
+    %read-history
+    %write-history
+    %append-history
+    %truncate-history
+    add-history
+    add-history-time
 
-     gnu-search-history
-     gnu-search-history-forward
-     gnu-search-history-backward
- 
-     gnu-readline-parse-and-bind
-     gnu-readline-set-bounce-ms
-  
-     gnu-readline-completions)
+    set-bounce-ms
 
+    history-newlines
+    history-list-length
+    history-list
+
+    history-get-entry
+
+    history-current-entry
+    history-previous-entry
+    history-next-entry
+    history-position
+    search-history
+    history-search
+    search-history-forward
+    history-search-forward
+    search-history-backward
+    history-search-backward
+
+    use-legacy-bindings
+
+    history-install-file-manager
+    parse-and-bind
+    completions)
   (import scheme chicken foreign ports data-structures)
-
- (use posix)
-
- ; gnu-readline
- ; make-gnu-readline-port
- ; %gnu-readline-signal-cleanup
- ;
- ; gnu-readline-clear-history
- ; gnu-readline-read-history
- ; gnu-readline-write-history
- ; gnu-readline-append-history
- ; gnu-readline-truncate-history
- ; gnu-history-new-lines
- ; gnu-history-install-file-manager
- ;
- ; gnu-readline-parse-and-bind
- ; gnu-readline-set-bounce-ms
- ; 
- ; gnu-readline-completions
- ; )
-
+  (use posix)
 
 #>
  #include "readline-egg.c"
 <#
-
 
 ;; Initialise (note the extra set of parens)
 ((foreign-lambda void "gnu_readline_init"))
@@ -154,73 +119,108 @@ TODO:
 
 ;; Various C funcs
 
-(define gnu-readline
+(define readline
   (foreign-safe-lambda c-string "gnu_readline_readline" c-string c-string))
 
-(define %gnu-readline-signal-cleanup
+(define %signal-cleanup
     (foreign-lambda void "gnu_readline_signal_cleanup"))
 
-(define gnu-readline-clear-history
+(define clear-history
   (foreign-lambda void "clear_history"))
 
 ;;; (gnu-readline-read-history <filename-or-false>) -> 0 for success, errno for failure
-(define gnu-readline-read-history
+(define %read-history
   (foreign-lambda int "read_history" c-string))
 
 ;;; (gnu-readline-write-history <filename-or-false>) -> 0 for success, errno for failure
-(define gnu-readline-write-history
+(define %write-history
   (foreign-lambda int "write_history" c-string))
 
-(define gnu-readline-append-history
+(define %append-history
     (foreign-lambda int "gnu_readline_append_history" c-string))
 
+(define set-bounce-ms
+  (foreign-lambda* void ((int time))
+                   "gnu_readline_bounce_ms = time;"))
+
 ;; (gnu-readline-truncate-history <filename-or-false> <numlines>) -> 0 succ, errno fail
-(define gnu-readline-truncate-history
+(define %truncate-history
   (foreign-lambda int "history_truncate_file" c-string int))
 
-(define gnu-history-new-lines
+(define add-history
+  (foreign-lambda void "add_history" c-string))
+
+(define add-history-time
+  (foreign-lambda void "add_history_time" c-string))
+
+(define history-newlines
     (foreign-lambda int "gnu_history_new_lines"))
 
-(define gnu-history-entry-time
-  (foreign-lambda c-string "gnu_history_timeat_offset" int))
-
-(define gnu-history-current-entry-line
-  (foreign-lambda c-string "gnu_history_lineat_current"))
-
-(define gnu-history-current-entry-time
-  (foreign-lambda c-string "gnu_history_timeat_current"))
-
-(define (gnu-history-goto-entry offset #!optional relative)
-  (define result ((foreign-lambda bool "gnu_history_goto_offset" int bool) offset relative))
-  (if result
+(define (history-current-entry #!optional time)
+  (if time
     (list
-      line: ((foreign-lambda c-string "gnu_history_lineat_current"))
-      index: (gnu-history-position))
-    result))
-          
+      (cons 'line
+            ((foreign-lambda c-string "gnu_history_entry" int int) 0 0))
+      (cons 'time
+            ((foreign-lambda c-string "gnu_history_entry" int int) 0 1)))
+    ((foreign-lambda c-string "gnu_history_entry" int int) 0 0)))
 
+(define (history-previous-entry #!optional time)
+  (if time
+    (list
+      (cons 'line
+            ((foreign-lambda c-string "gnu_history_entry" int int) -1 0))
+      (cons 'time
+            ((foreign-lambda c-string "gnu_history_entry" int int) -1 1)))
+    ((foreign-lambda c-string "gnu_history_entry" int int) -1 0)))
+
+(define (history-next-entry #!optional time)
+  (if time
+    (list
+      (cons 'line
+            ((foreign-lambda c-string "gnu_history_entry" int int) 1 0))
+      (cons 'time
+            ((foreign-lambda c-string "gnu_history_entry" int int) 1 1)))
+    ((foreign-lambda c-string "gnu_history_entry" int int) 1 0)))
+
+(define (history-get-entry index #!optional time)
+  (if time
+    (list
+      (cons 'line
+            ((foreign-lambda c-string "gnu_history_get" int int) index 0))
+      (cons 'time
+            ((foreign-lambda c-string "gnu_history_get" int int) index 1)))
+    ((foreign-lambda c-string "gnu_history_get" int int) index 0)))
 
 ;; (gnu-history-search "string" -1) -> search through previous entries
 ;; (gnu-history-search "string" 0+) -> search through subsequent entries.
 ;; returns match on succ, #f on fail.
-;; XXX use `(get-keyword)' to access offset:, match:, and index:
-;; XXX `index:' corresponds to the history-position within history_list of the match
-(define (gnu-search-history string direction)
-  (define offset ((foreign-lambda int "history_search" c-string int)
-                  string direction))
+;; xxx use `(get-keyword)' to access offset:, match:, and index:
+;; xxx `index:' corresponds to the history-position within history_list of the match
+(define (search-history string direction)
+  (define offset
+    ((foreign-lambda int "history_search" c-string int) string direction))
   (if (= offset -1)
     #f
-    (list offset: offset
-          match: ((foreign-lambda c-string "gnu_history_lineat_current"))
-          index: (gnu-history-position))))
+    (list (cons 'match
+                (list (cons 'line (history-current-entry))
+                      (cons 'time (history-current-entry #t))
+                      (cons 'offset offset)))
+          (cons 'index (history-position)))))
 
-(define (gnu-search-history-backward string)
-  (gnu-search-history string -1))
+(define history-search search-history)
 
-(define (gnu-search-history-forward string)
-  (gnu-search-history string 0))
+(define (search-history-backward string)
+  (search-history string -1))
 
-(define gnu-history-list-length
+(define history-search-backward search-history-backward)
+
+(define (search-history-forward string)
+  (search-history string 0))
+
+(define history-search-forward search-history-forward)
+
+(define history-list-length
   (foreign-lambda int "gnu_history_list_length"))
 
 #| the underlying c-function works, but the scheme binding to said function is buggy.
@@ -230,116 +230,135 @@ TODO:
  "a\nb\nc\nd" -> ((1 . "a") (2 . "b") (3 . "c") (4 . "d"))
 
  |#
-#;(define (gnu-history-list) ; FIXME
-  (let* ((history-list-string ((foreign-lambda c-string "gnu_history_list")))
-         (history-list (if (string? history-list-string)
-                         (string-split history-list-string "\n")
-                         '()))
-        (history-length (- (gnu-history-list-length) 1))
-        (lst '()))
-    (do ((idx 0 (+ idx 1)))
-      ((= history-length idx) lst)
-      (set! lst (append lst (list (+ idx 1) . (car history-list))))
-      (set! history-list (cdr history-list)))))
-  
+(define (history-list) ; FIXME ...err nevermind, I'm good for now.
+  `(,@(string-split ((foreign-lambda c-string "gnu_history_list")) "\n")))
 
-;; (gnu-history-position pos) -> sets the current history position: 0 succ, 1 fail
 ;; (gnu-history-position) -> current history position within history_list
-(define (gnu-history-position #!optional pos)
-  (if pos
-    (gnu-history-goto-entry pos #t)
-    ((foreign-lambda int "where_history"))))
+;; (set! (history-position) pos) -> sets the current history position
+(define (history-position)
+    ((foreign-lambda int "where_history")))
+(set! (setter history-position) (lambda (pos) ((foreign-lambda bool "history_set_pos" int) pos)))
 
 ;; Useful...
-(define gnu-readline-parse-and-bind
+(define parse-and-bind
   (foreign-lambda int "rl_parse_and_bind" c-string))
 
-;; Set the amount of time the cursor spends bouncing
-(define gnu-readline-set-bounce-ms
-  (foreign-lambda* void ((int time))
-	"gnu_readline_bounce_ms = time;"))
+; paren-bouncing support (comes with batteries included)
+; XXX however, it doesn't work with LISP. 
+;(parse-and-bind "set blink-matching-paren on")
 
 ;; get access to the quoting flag
 (define-foreign-variable is-quoted? int "rl_completion_quote_character")
 (define-foreign-variable filename-completion int "rl_filename_completion_desired")
 
 ;; Handler for the command history file
-(define (gnu-history-install-file-manager filename . nlines)
+(define (history-install-file-manager filename . nlines)
   (define (hook param)
     (param (let ((next (param)))
 	     (lambda args
 	       ;(gnu-readline-write-history filename)
-               (gnu-readline-append-history filename)
+               (%append-history filename)
 	       (apply next args)))))
   (if (pair? nlines)
       (set! nlines (car nlines))
       (set! nlines 1000))
   (if nlines
-      (gnu-readline-truncate-history filename nlines))
-  (gnu-readline-read-history filename)
+      (%truncate-history filename nlines))
+  (%read-history filename)
   (hook exit-handler)
   (hook implicit-exit-handler))
-
 
 ;; Prompt2 is displayed when there are still open parens, this just makes a reasonable one
 (define (make-prompt2 prompt)
   (let ((len (string-length prompt)))
-	(case len
-	  ((0) "")
-	  ((1) ">")
-	  ((2) "> ")
-	  (else (conc (make-string (- len 2) #\-) "> ")))))
+   (case len
+     ((0) "")
+     ((1) ">")
+     ((2) "> ")
+     (else (conc (make-string (- len 2) #\-) "> ")))))
 
 
 ;; Creates a port that reads using readline
-(define (make-gnu-readline-port #!optional prompt prompt2)
-    (let ((buffer   "")
-          (pos      0)
-          (p1       prompt)
-          (p2       prompt2)
-          (handle   #f))
-        (letrec ((char-ready?
-                    (lambda ()
-                        (< pos (string-length buffer))))
-                 (get-next-char!
-                    (lambda ()
-                        (cond ((not buffer)
-                                  #!eof)
-                              ((char-ready?)
-                                  (let ((ch   (string-ref buffer pos)))
-                                      (set! pos (+ 1 pos))
-                                      ch))
-                              (else
-                                  (set! pos 0)
-                                  (set! buffer
-                                        (let* ((prompt    (or prompt
-                                                              ((##readline#repl-prompt))))
-                                               (prompt2   (make-prompt2
-                                                              prompt)))
-                                            (gnu-readline prompt prompt2)))
-                                  (if (string? buffer)
-                                      (set! buffer (string-append buffer "\n")))
-                                  (get-next-char!))))))
-            (set! handle (lambda (s)
-                             (print-call-chain)
-                             (set! pos 0)
-                             (set! buffer "")
-                             ((foreign-lambda void
-                                  "gnu_readline_signal_cleanup"))
-                             (##sys#user-interrupt-hook)))
-            (set-signal-handler! signal/int handle)
-            (let ((p   (make-input-port
-                           get-next-char!
-                           char-ready?
-                           (lambda ()
-                               (set-signal-handler! signal/int #f)
-                               'closed-gnu-readline-port))))
-                (set-port-name! p "(gnu-readline)")
-                p))))
+(define (make-readline-port #!optional prompt prompt2)
+  (let ((buffer   "")
+        (pos      0)
+        (p1       prompt)
+        (p2       prompt2) ;; removes the weird second prompt
+        (handle   #f))
+    (letrec ((char-ready?
+               (lambda ()
+                 (< pos (string-length buffer))))
+             (get-next-char!
+               (lambda ()
+                 (cond ((not buffer)
+                        #!eof)
+                       ((char-ready?)
+                        (let ((ch   (string-ref buffer pos)))
+                         (set! pos (+ 1 pos))
+                         ch))
+                       (else
+                         (set! pos 0)
+                         (set! buffer
+                           (let* ((prompt    (or prompt
+                                                 ((##readline#repl-prompt))))
+                                  (prompt2   (make-prompt2 prompt)))
+                             (readline prompt prompt2)))
+                         (if (string? buffer)
+                           (set! buffer (string-append buffer "\n")))
+                         (get-next-char!))))))
+      (set! handle (lambda (s)
+                     (print-call-chain)
+                     (set! pos 0)
+                     (set! buffer "")
+                     ((foreign-lambda void
+                                      "gnu_readline_signal_cleanup"))
+                     (##sys#user-interrupt-hook)))
+      (set-signal-handler! signal/int handle)
+      (let ((p   (make-input-port
+                   get-next-char!
+                   char-ready?
+                   (lambda ()
+                     (set-signal-handler! signal/int #f)
+                     'closed-gnu-readline-port))))
+        (set-port-name! p "(gnu-readline)")
+        p))))
 
-
+#| Leagcy Bindings |#
+(define (use-legacy-bindings)
+  (and (map (lambda (a) (eval a))
+            (do ((lst '((gnu-readline-readline
+                         readline#readline)
+                        (%gnu-readline-signal-cleanup
+                          readline#%signal-cleanup)
+                        (gnu-readline-clear-history
+                          readline#clear-history)
+                        (gnu-readline-read-history
+                          readline#%read-history)
+                        (gnu-readline-write-history
+                          readline#%write-history)
+                        (gnu-readline-append-history
+                          readline#%append-history)
+                        (gnu-readline-truncate-history
+                          readline#%truncate-history)
+                        (gnu-history-new-lines
+                          readline#history-newlines)
+                        (gnu-readline-parse-and-bind
+                          readline#parse-and-bind)
+                        (gnu-readline-set-bounce-ms
+                          readline#set-bounce-ms)
+                        (gnu-history-install-file-manager
+                          readline#history-install-file-manager)
+                        (make-gnu-readline-port
+                          readline#make-readline-port)
+                        (gnu-readline-completions
+                          readline#completions))
+                      (cdr lst))
+                 (new-lst '()
+                          (append new-lst
+                                  (list `(define ,(caar lst) ,(cadar lst))))))
+              ((null? lst) new-lst)))
+       (void)))
 ;;;;;;;; Tab Completion ;;;;;;;;
-
 
 ;; Borrowed from the oblist egg
 (define find-symbol-table (foreign-lambda c-pointer "C_find_symbol_table" c-string))
@@ -379,18 +398,18 @@ TODO:
 		  
 ;; Macros (thanks to Kon Lovett for suggesting ##sys#macro-environment)
 (define (create-macro-ef word)
-	(let ((index -1))
-	  (lambda ()
-            (let ((macro-env (##sys#macro-environment)))
-              (let loop ()
-                (set! index (+ 1 index))
-                (cond ((>= index (length macro-env))
-                       "")
-                      (else 
-                       (let ((ref (list-ref macro-env index)))
-                         (if (null? ref)
-                             (loop)
-                             (symbol->string (car ref)))))))))))
+  (let ((index -1))
+   (lambda ()
+     (let ((macro-env (##sys#macro-environment)))
+      (let loop ()
+       (set! index (+ 1 index))
+       (cond ((>= index (length macro-env))
+              "")
+             (else 
+               (let ((ref (list-ref macro-env index)))
+                (if (null? ref)
+                  (loop)
+                  (symbol->string (car ref)))))))))))
 
 ;; handling filename completion
 (define (turn-on-filenames)
@@ -405,14 +424,14 @@ TODO:
           (set! files (cdr files))
           current)))))
           
-(define gnu-readline-completions 
+(define completions 
   (make-parameter 
     (list 
       (cons 'macros create-macro-ef)
       (cons 'statics create-static-ef) 
       (cons 'symbols create-symbol-ef))))
 
-(define gnu-readline-quoted-completions
+(define quoted-completions
   (make-parameter
     (list
       (cons 'files create-file-ef))))
@@ -446,8 +465,8 @@ TODO:
   (map
     (lambda (pair) ((cdr pair) word)) 
     (if (= 34 is-quoted?)
-      (gnu-readline-quoted-completions)
-      (gnu-readline-completions))))
+      (quoted-completions)
+      (completions))))
 
 ;; Things that will always be there...
 (define static-keywords (vector 
@@ -494,8 +513,8 @@ TODO:
 						"string-ref" "string-set!" "string<=?" "string<?" 
 						"string=?" "string>=?" "string>?" "string?" 
 						"substring" "symbol->string" "symbol?" 
-						"syntax-rules" "tan" "transcript-off" 
-						"transcript-on" "truncate" "values" "vector" 
+						"syntax-rules" "tan" #| "transcript-off" ; not implemented
+						"transcript-on" |# "truncate" "values" "vector" 
 						"vector->list" "vector-fill!" "vector-length" 
 						"vector-ref" "vector-set!" "vector?" 
 						"with-input-from-file" "with-output-to-file" 
@@ -504,6 +523,5 @@ TODO:
 						",?" ",p" ",d" ",du" ",dur" ",q" ",l" ",ln" ",r"
 						",s" ",tr" ",utr" ",t" ",x" 
 						))
-
 
 )

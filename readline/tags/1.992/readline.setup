@@ -1,0 +1,56 @@
+;;;; readline.setup -*- Scheme -*-
+
+
+(define +test-code+ #<<EOF
+#include <stdio.h>
+#include <readline/readline.h>
+#include <readline/history.h>
+int main() {
+    char *c = readline("foo");
+    add_history("test");
+    rl_refresh_line(0, 0);
+    return 0;
+}
+
+EOF
+)
+
+(define-syntax check-rllibs 
+  (syntax-rules ()
+    ((_ libs)
+     (and (print "trying: " libs)
+	  (try-compile +test-code+ ldflags: libs)
+	  libs))))
+
+(define rl-extralib
+    (or (check-rllibs "-lreadline -lhistory -ltermcap")
+        (check-rllibs "-lreadline -lhistory -lcurses")
+        (check-rllibs "-lreadline -lhistory -lncurses")
+        (check-rllibs "-lreadline -ltermcap")
+        (check-rllibs "-lreadline -lcurses")
+        (check-rllibs "-lreadline -lncurses")
+        (check-rllibs "-lreadline -lhistory")
+        (check-rllibs "-lreadline")
+        (error 
+            (string-append
+                "This extension requires GNU readline.  GNU readline "
+                "may be found at ftp://ftp.gnu.org/pub/gnu/readline\n"
+                "For more information, please consult "
+                "http://chicken.wiki.br/readline#Installation%20problems."
+            ))))
+
+(compile -s -O2 readline.scm ,rl-extralib)
+
+(compile -c -O2 -d0 -j readline readline.scm
+         -o readline-static.o -unit readline ,rl-extralib)
+
+(compile -s -O2 -d0 readline.import.scm)
+
+
+(install-extension
+    'readline
+    '("readline.so" "readline.import.so" "readline-static.o")
+    `((version           1.992)
+      (static            "readline-static.o")
+      (static-options    ,rl-extralib)))
+

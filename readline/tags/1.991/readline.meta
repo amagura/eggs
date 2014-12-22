@@ -1,0 +1,9 @@
+;;; readline.meta -*- Scheme -*-
+
+((egg "readline.egg")
+ (synopsis "An interface to the GNU readline library")
+ (category io)
+ (doc-from-wiki)
+ (license "GPL-2")
+ (author "Tony Garnock-Jones")
+ (files "readline.meta" "readline.scm" "readline-egg.c" "readline.setup"))

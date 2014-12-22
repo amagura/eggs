@@ -1,0 +1,22 @@
+Version 2.3 - 2014-12-21 Alexej Magura <agm2819*gmail*>
+  * readline.setup:
+    reverted back to v1.993 setup; added checks to see if <bsd/string.h> is present and if `strlcat' is provided by `-lbsd'
+
+Version 2.2 - 2014-12-20 Alexej Magura <agm2819*gmail*>
+
+  * readline-egg.c:
+    (include): added `<stdbool.h>'
+    (#define): added some more macros; most of which probably aren't used...
+    (balance_t): changed `paren' and `brace' to arrays of integers with a size of 3 (e.g. `int paren[3]`)
+    (strtail_addr): added a function that returns the memory address of a string's tail (i.e. `&string[strlen(string) - 1]`)
+    (strend_addr): added another function; this one returns the memory address of the terminating null in a string.
+    (prev_char): added a function that takes a string pointer and a string and peeks at the previous char, if any, without messing the pointer up.
+    (ptr_strhead): added a function that tells you if the string pointer is pointing to the memory address of the first char in `string'
+    (ptr_not_strhead): added a function that calls `!ptr_strhead`.
+    (quote_in_string): added a function that finds the number of `"` in a string and tells you if they're balanced or not.
+    (clear_parbar): (horrible name, I know).  sets each `int' in the `balance.paren' and `balance.brace' arrays to `0'.
+    (parbar_in_string): finds the balance of `(' vs `)' or `[' vs `]' in a string; replaces `key_balance' with some help from `quote_in_string'.
+
+  * readline-egg.c: fixed several bugs with the unclosed-expression-prompt.
+
+  * extra/test.bats: added some tests written in `bats' that help test for bugs that are harder to catch inside of scheme, since they happen at the REPL.

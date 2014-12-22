@@ -1,0 +1,12 @@
+<!-- vim:ft=markdown: -->
+
+# TODO -> v2.0 Release
+
+## Scheme
+* remove `history-goto-entry`, `history-current-entry-time`, `history-current-entry-line`, and `history-entry-time`.
+* expose `current_history()`, `next_history()`, and `previous_history()` API
+* refactor `history-position` to use `set_history_pos` directly.
+* remove support for offsets relative to the current position.
+
+## C
+* add support for highlighting the current paren or brace under the cursor.

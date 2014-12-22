@@ -1,0 +1,66 @@
+;;;; readline.setup -*- Scheme -*-
+;;;; vim:ft=scheme:
+
+(define-syntax check-rllibs
+  (syntax-rules ()
+    ((_ libs)
+     (and
+       (print (string-append "trying: " libs))
+       (handle-exceptions
+         e #f
+         (compile/error readline-test.scm ,(string-append "-lreadline -lhistory " libs)))
+       libs))))
+
+(define-syntax compile/error
+  ;; Required for Chicken < 4.6, which calls (reset) on (compile) error.
+  (syntax-rules ()
+    ((compile/error args ...)
+     (let ((old-reset (reset-handler)))
+       (parameterize ((reset-handler
+                       (lambda ()
+                         (parameterize ((reset-handler old-reset))
+                           (error 'compile "compilation error")))))
+         (compile args ...))))))
+
+(let ((CFLAGS "")
+      (LDFLAGS ""))
+
+  ;; if readline is not present, tell them to install it.
+
+  (if (and (find-library "readline" "rl_bind_key")
+           (find-library "history" "using_history"))
+    (set! LDFLAGS (string-append LDFLAGS "-lreadline -lhistory "))
+    (error (string-append
+             "This extension requires GNU readline.  GNU readline "
+             "may be found at ftp://ftp.gnu.org/pub/gnu/readline\n"
+             "For more information, please consult "
+             "http://wiki.call-cc.org/egg/readline#installation-problems\n")))
+
+  ;; if bsd/string.h is present, C code will use `strlcpy' and `strlcat'
+  ;; instead of something else.
+  (if (find-header "bsd/string.h")
+    (set! CFLAGS (string-append CFLAGS "-D_HAVE_LIBBSD=1"))
+    #f)
+
+  (if (find-library "bsd" "strlcpy")
+    (set! LDFLAGS (string-append LDFLAGS "-lbsd "))
+    #f)
+
+  (define-inline (check-libs libs)
+    (if (check-rllibs (car libs))
+      (set! LDFLAGS (string-append LDFLAGS (car libs) " "))
+      (check-libs (cdr libs))))
+
+  (check-libs '("-ltermcap" "-lncurses" "-lcurses"))
+
+  (compile -s -O2 readline.scm -C ,CFLAGS ,LDFLAGS)
+  (compile -C ,CFLAGS -c -O2 -d0 -j readline readline.scm
+           -o readline-static.o -unit readline ,LDFLAGS)
+  (compile -s -O2 -d0 readline.import.scm)
+  
+  (install-extension
+    'readline
+    '("readline.so" "readline.import.so" "readline-static.o")
+    `((version           2.2)
+      (static            "readline-static.o")
+      (static-options    ,LDFLAGS))))
