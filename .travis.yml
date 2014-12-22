@@ -10,4 +10,4 @@ install:
   - sudo apt-get -t wheezy install gcc-4.4 gcc-4.7 --force-yes
   - sudo apt-get -t unstable install libchicken-dev libchicken7 chicken-bin --force-yes
 script:
-  - cd readline && sudo chicken-install -trunk -s
+  - cd readline && cd trunk && sudo CSC_OPTIONS=-cc\ $CC chicken-install -trunk -s
