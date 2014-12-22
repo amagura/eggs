@@ -52,7 +52,10 @@ release: sure doc clean
 	  svn copy trunk tags/$(version) ;\
 	  cd tags/$(version) ;\
 	  $(RM) Makefile
-test:
+test-release: sure doc
+	cd ${startdir}; \
+	  cd ..; \
+	  echo $(version)
 
 
 doc:
