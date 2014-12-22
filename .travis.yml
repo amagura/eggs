@@ -9,6 +9,5 @@ install:
   - sudo apt-get update
   - sudo apt-get -t wheezy install gcc-4.4 gcc-4.7 --force-yes
   - sudo apt-get -t unstable install libchicken-dev libchicken7 chicken-bin --force-yes
-  - sudo chicken-install salmonella
 script:
-  - cd readline && salmonella
+  - cd readline && sudo chicken-install -trunk -s
