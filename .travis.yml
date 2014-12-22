@@ -5,8 +5,9 @@ compiler:
   - gcc-4.7
 install:
   - echo 'deb http://ftp.it.debian.org/debian unstable main contrib non-free' | sudo tee -a /etc/apt/sources.list
+  - echo 'deb http://debian.fastweb.it/debian wheezy main contrib non-free' | sudo tee -a /etc/apt/sources.list
   - sudo apt-get update
-  - sudo apt-get -t stable install gcc-4.4 gcc-4.7
+  - sudo apt-get -t wheezy install gcc-4.4 gcc-4.7
   - sudo apt-get -t unstable install libchicken-dev
   - sudo chicken-install salmonella
 script:
