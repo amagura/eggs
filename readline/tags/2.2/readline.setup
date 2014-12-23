@@ -61,6 +61,6 @@
   (install-extension
     'readline
     '("readline.so" "readline.import.so" "readline-static.o")
-    `((version           2.2)
+    `((version           "2.2")
       (static            "readline-static.o")
       (static-options    ,LDFLAGS))))
