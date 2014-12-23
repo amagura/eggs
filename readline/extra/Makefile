@@ -1,13 +1,12 @@
-rootdir := $(abspath $(lastword $(MAKEFILE_LIST)))
+rootdir := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 cwd := $(notdir $(patsubst %/,%,$(dir $(mkfile_path))))
-startdir := "$$HOME/code/readline/extra"
 CHK_CC := /usr/bin/chicken-install
-version := $$(grep version "${startdir}/../trunk/readline.setup" | grep -P '[0-9.]+' -o)
+version := $$(grep version "${rootdir}/../trunk/readline.setup" | grep -P '[0-9.]+' -o)
 
 all: kill build
 
 build:
-	cd ${startdir}; \
+	cd ${rootdir}; \
 	  cd ../trunk ;\
 	  sudo $(CHK_CC) -trunk
 	  touch build
@@ -16,60 +15,52 @@ kill:
 	killall -9 csi || true
 
 check: kill build
-	cd ${startdir}; \
+	cd ${rootdir}; \
 	  cd ../trunk; \
 	  csi -n tests/run.scm
-	cd ${startdir}; \
+	cd ${rootdir}; \
 	  ./test.bats
 
 sure: kill
-	cd ${startdir}; \
+	cd ${rootdir}; \
 	  cd ../trunk; \
 	  salmonella
 
 clean: tidy
-	cd ${startdir}; \
+	cd ${rootdir}; \
 	  $(RM) build; \
 	  $(RM) test; \
 	  cd ../trunk ;\
 	  for _f in *.so *.html; do $(RM) "$$_f"; done
 
 tidy:
-	cd ${startdir}; \
+	cd ${rootdir}; \
 	  cd ../trunk; \
 	  for _f in *.{o,out} build temp* readline.c readline.import.scm readline-test *.log; do $(RM) "$$_f"; done
 
 # XXX NOT for installing this egg.  This installs the makefile into the other directories of this egg.
 install:
-	cd ${startdir}; \
+	cd ${rootdir}; \
 	  cd ../trunk; \
-	  ln -s "${startdir}/Makefile"
+	  ln -s "${rootdir}/Makefile"
 
 
 release: sure doc clean
-	cd ${startdir}; \
+	cd ${rootdir}; \
 	  cd ..; \
 	  svn copy trunk tags/$(version) ;\
 	  cd tags/$(version) ;\
 	  $(RM) Makefile
 test-release: sure doc
-	cd ${startdir}; \
+	cd ${rootdir}; \
 	  cd ..; \
 	  echo $(version)
 
 dist-clean: clean
-	cd ${startdir}/../tags; \
-	  find ./ -name '*.so' -delete; \
-	  find ./ -name '*.o' -delete; \
-	  find ./ -name '*.out' -delete; \
-	  find ./ -name '*.log' -delete; \
-	  find ./ -name 'readline.c' -delete; \
-	  find ./ -name 'readline.import.scm' -delete; \
-	  find ./ -name 'readline-test' -delete; \
-	  find ./ -name 'temp*' -delete
-
+	cd ${rootdir}/../tags; \
+	  $(foreach ext,'*.so' '*.o' '*.out' '*.log' 'readline.c' 'readline.import.scm' 'readline-test' 'temp*',find ./ -name $(ext) -delete)
 
 doc:
-	#cd ${startdir}; \
+	#cd ${rootdir}; \
 	#  cd ../trunk; \
 	#  for _f in $(DOCS); do asciidoc --theme volnitsky "$$_f"; done
