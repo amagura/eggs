@@ -43,27 +43,6 @@
 #define _CHK_READLINE_EGG_STRCPY_FN_USED _CHK_READLINE_EGG_STRCAT_FN_USED
 #endif
 
-#define _CHK_READLINE_EGG_INCR_ONTOK(token) \
-  do { \
-    switch ((token)) { \
-      case '(': \
-                ++balance.paren.open; \
-      break; \
-      case ')': \
-                ++balance.paren.close; \
-      break; \
-      case '[': \
-                ++balance.brace.open; \
-      break; \
-      case ']': \
-                ++balance.brace.close; \
-      break; \
-      case '"': \
-                charc % 2 == 0 || ++balance.quote; \
-      break; \
-    } \
-  } while(0)
-
 #define _CHK_READLINE_EGG_SETPROP_3(prop1, prop2, prop3, val) (prop1) = (val); (prop2) = (val); (prop3) = (val)
 
 #define _CHK_READLINE_EGG_CLEAR_SUB(sub_struct) \
@@ -341,7 +320,8 @@ gnu_readline_scm_complete(char *, int, int);
 
 // Gets called (repeatedly) when readline tries to do a completion
 // FIXME, I use _strncpy_, but I should probably use _strlcpy_ or _strncat_
-char *gnu_readline_tab_complete(const char *text, int status) {
+char *
+gnu_readline_tab_complete(const char *text, int status) {
   C_word result;
   char *str;
   int len;
