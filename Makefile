@@ -7,7 +7,6 @@ all: build
 
 build:
 	find /usr/bin -name 'gcc*' -print
-	/usr/bin/gcc --version
 	$(foreach dir,$(eggs),cd $(dir); make -B)
 
 clean:
