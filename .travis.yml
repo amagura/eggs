@@ -3,7 +3,8 @@ compiler:
   - clang
   - gcc-4.4
 install:
-  - sudo apt-get install gcc-4.4 gcc-4.7 clang
+  - sudo apt-get install clang
   - sudo apt-get install libchicken-dev chicken-bin
+  - sudo apt-get install gcc-4.
 script:
   - make
