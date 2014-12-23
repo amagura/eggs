@@ -6,8 +6,7 @@ version := $$(grep version "${rootdir}/../trunk/readline.setup" | grep -P '[0-9.
 all: kill build
 
 build:
-	cd ${rootdir}; \
-	  cd ../trunk ;\
+	cd ${rootdir}/../trunk; \
 	  sudo $(CHK_CC) -trunk
 	  touch build
 
@@ -15,15 +14,13 @@ kill:
 	killall -9 csi || true
 
 check: kill build
-	cd ${rootdir}; \
-	  cd ../trunk; \
+	cd ${rootdir}/../trunk; \
 	  csi -n tests/run.scm
-	cd ${rootdir}; \
+	cd ${rootdir}/../extra; \
 	  ./test.bats
 
 sure: kill
-	cd ${rootdir}; \
-	  cd ../trunk; \
+	cd ${rootdir}/../trunk; \
 	  salmonella
 
 clean: tidy
@@ -42,7 +39,7 @@ tidy:
 install:
 	cd ${rootdir}; \
 	  cd ../trunk; \
-	  ln -s "${rootdir}/Makefile"
+	  ln -s "${rootdir}/../extra/Makefile"
 
 
 release: sure doc clean
