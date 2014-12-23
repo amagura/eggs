@@ -6,7 +6,6 @@ eggs = readline/trunk
 all: build
 
 build:
-	find /usr -name 'gcc*' -print
 	$(foreach dir,$(eggs),cd $(dir); make -B)
 
 clean:

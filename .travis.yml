@@ -4,7 +4,6 @@ compiler:
   - gcc-4.4
   - gcc-4.5
   - gcc-4.6
-  - gcc
 install:
   - sudo apt-get install clang
   - sudo apt-get install libchicken-dev chicken-bin
