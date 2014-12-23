@@ -21,19 +21,23 @@
   along with load-star.scm.  If not, see <http://www.gnu.org/licenses/>.
 |#
 
-(module load* (load* depth)
-  (import scheme chicken loop)
+(module load* (load*)
+  (import scheme chicken loop filepath)
   
-  (define (depth tree)
-    (if (not-pair? tree) 0
-      (+ 1 (apply max (map depth tree)))))
+  (define-inline (1+ n)
+    (+ 1 n))
 
-  (define (pathname-separator)
-    (d
+  (define-inline (1- n)
+    (- 1 n))
 
+  (define-inline (depth tree)
+    (if (not-pair? tree)
+      0
+      (1+ (apply max (map depth tree)))))
+  
   (define (build-pathnames lst)
     (if (= (depth lst) 1)
       (map (lambda (lst)
              (let ((dir (car lst))
                    (files (cdr lst)))
-               (map (lambda (file) (string-append dir
+               (map (lambda (file)
