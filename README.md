@@ -1,4 +1,4 @@
-eggs [![Build Status](https://travis-ci.org/sickh/eggs.svg?branch=master)](https://travis-ci.org/sickh/eggs)
+eggs [![Build Status](https://travis-ci.org/amagura/eggs.svg?branch=master)](https://travis-ci.org/sickh/eggs)
 ====
 
 
