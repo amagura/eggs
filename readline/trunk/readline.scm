@@ -230,7 +230,7 @@
  "a\nb\nc\nd" -> ((1 . "a") (2 . "b") (3 . "c") (4 . "d"))
 
  |#
-(define (history-list) ; FIXME ...err nevermind, I'm good for now.
+(define (history-list)
   `(,@(string-split ((foreign-lambda c-string "gnu_history_list")) "\n")))
 
 ;; (gnu-history-position) -> current history position within history_list

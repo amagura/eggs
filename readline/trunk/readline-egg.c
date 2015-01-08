@@ -3,7 +3,7 @@
 //
 // Copyright (c) 2002 Tony Garnock-Jones
 // Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
-// Copyright (c) 2014 Alexej Magura (added a lot of history functions and more)
+// Copyright (c) 2015 Alexej Magura (added a lot of history functions and more)
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -43,25 +43,7 @@
 #define _CHK_READLINE_EGG_STRCPY_FN_USED _CHK_READLINE_EGG_STRCAT_FN_USED
 #endif
 
-#define _CHK_READLINE_EGG_SETPROP_3(prop1, prop2, prop3, val) (prop1) = (val); (prop2) = (val); (prop3) = (val)
-
-#define _CHK_READLINE_EGG_CLEAR_SUB(sub_struct) \
-  do { \
-    (sub_struct).close = 0; \
-    (sub_struct).open = 0; \
-  } while(0)
-
-#define _CHK_READLINE_EGG_OR_3(val1, val2, val3) ((val1) || (val2) || (val3))
-#define _CHK_READLINE_EGG_NOR_3(val1, val2, val3) !(_CHK_READLINE_EGG_OR_3((val1), (val2), (val3)))
-
-#define _CHK_READLINE_EGG_IF_THEN_SET(exp, sub_struct, val) \
-  do { \
-    if ((exp)) { \
-      (sub_struct).open = (val); \
-      (sub_struct).close = (val); \
-    } \
-  } while(0)
-
+/*@ignore@*/
 #if 0 // NOTE change this to 1 to enable debug messages
 #define _CHK_READLINE_EGG_DEBUG(format, ...) fprintf(stderr, format, __VA_ARGS__)
 #define _CHK_READLINE_EGG_DEBUG_LIT(format, ...) fprintf(stderr, format, #__VA_ARGS__)
@@ -69,6 +51,7 @@
 #define _CHK_READLINE_EGG_DEBUG(format, ...)
 #define _CHK_READLINE_EGG_DEBUG_LIT(format, ...)
 #endif
+/*@end@*/
 
 struct balance_t {
   int paren[3]; // 0 -> total, 1 -> open, 2 -> close
@@ -76,11 +59,11 @@ struct balance_t {
   int quote;
 } balance;
 
-static char *gnu_readline_buf = NULL;
-static int gnu_readline_paren_balance = 0;
 static int gnu_readline_bounce_ms = 500;
 static int gnu_history_newlines = 0;
-#if 0// NOT YET IMPLEMENTED
+static char *gnu_readline_buf = NULL;
+
+#if 0 // NOT YET IMPLEMENTED
 static struct gnu_readline_current_paren_color_t {
   int enabled;
   char *with_match;
@@ -96,19 +79,19 @@ static struct gnu_readline_current_paren_color_t {
    ~ Alexej
 */
 // >>>1
-inline char *
-strtail_addr(const char *string)
+inline void * // returns the memory address of the tail of a string (i.e. the offset just before the null-terminator)
+strtail_addr(char *string)
 {
-  return (char *)&string[strlen(string) - 1];
+  return &string[strlen(string) - 1];
 }
 
-inline char *
-strend_addr(const char *string)
+inline void * // returns the memory address of the null-terminator within a string
+strend_addr(char *string)
 {
-  return (char *)&string[strlen(string)];
+  return &string[strlen(string)];
 }
 
-inline char
+inline char // returns the character preceding the character referenced by the memory address `stringp'
 prev_char(char *stringp, char *string)
 {
   char result = '\0';
@@ -122,19 +105,19 @@ prev_char(char *stringp, char *string)
   return result;
 }
 
-inline bool
+inline bool // is the memory address referenced by `stringp' the same memory address as `&string[0]'
 ptr_strhead(char *stringp, char *string)
 {
   return stringp == string;
 }
 
-inline bool
+inline bool // is the memory address `stringp' __not__ the same as address as `&string[0]'
 ptr_not_strhead(char *stringp, char *string)
 {
   return !ptr_strhead(stringp, string);
 }
 // <<<1
-inline int /* working */
+inline int /* returns the _balance_ of quotes within a string */
 quote_in_string(char *string)
 {
   char *str_ptr = strend_addr(string);
@@ -158,7 +141,7 @@ quote_in_string(char *string)
 }
 
 inline void
-clear_parbar(char token)
+clear_paren_brace_counts(char token)
 {
   int idx = 0;
   for (; idx < 3; ++idx) {
@@ -169,8 +152,8 @@ clear_parbar(char token)
   }
 }
 
-inline int /* not working */
-parbar_in_string(char *string, char add_token)
+inline int /* returns the total number of parens or braces in a string */
+parens_braces_in_string(char *string, char add_token)
 {
   int *idxp = NULL;
   char sub_token = '\0';
@@ -207,6 +190,7 @@ parbar_in_string(char *string, char add_token)
   return *idxp;
 }
 
+#if 0 // NOT YET IMPLEMENTED
 int
 highlight_paren()
 {
@@ -215,12 +199,13 @@ highlight_paren()
   _CHK_READLINE_EGG_DEBUG("%s\n", rl_ptr);
   return 0;
 }
+#endif
 
 ////\\\\//// Paren Bouncing ////\\\\////
 
 /* Returns: (if positive) the position of the matching paren
             (if negative) the number of unmatched closing parens */
-int
+inline int
 gnu_readline_skip(int pos, char open_key, char close_key)
 {
   while (--pos > -1) {
@@ -229,16 +214,16 @@ gnu_readline_skip(int pos, char open_key, char close_key)
     } else if (rl_line_buffer[pos] == open_key) {
       return pos;
     } else if (rl_line_buffer[pos] == close_key) {
-      pos = gnu_readline_skip(pos, open_key, close_key);
+      pos = gnu_readline_skip(pos, open_key, close_key); // FIXME, I'm a recurisve call
     } else if (rl_line_buffer[pos] == '"') {
-      pos = gnu_readline_skip(pos, '"', '"');
+      pos = gnu_readline_skip(pos, '"', '"'); // FIXME, I'm a recursive call
     }
   }
   return pos;
 }
 
 // Finds the matching paren (starting from just left of the cursor)
-int
+inline int
 gnu_readline_find_match(char key)
 {
   if (key == ')')
@@ -249,7 +234,7 @@ gnu_readline_find_match(char key)
 }
 
 // Delays, but returns early if key press occurs 
-void
+inline void
 gnu_readline_timid_delay(int ms)
 {
   struct pollfd pfd;
@@ -426,13 +411,13 @@ gnu_readline_readline(char *prompt, char *prompt2)
   if (strlen(rl_line_buffer) > 0) {
     int adx = quote_in_string(rl_line_buffer);
     _CHK_READLINE_EGG_DEBUG("quote_in_string: %d\n", adx);
-    int bdx = parbar_in_string(rl_line_buffer, '(');
-    int cdx = parbar_in_string(rl_line_buffer, '[');
+    int bdx = parens_braces_in_string(rl_line_buffer, '(');
+    int cdx = parens_braces_in_string(rl_line_buffer, '[');
     balance.quote = (adx == -1 ? 0 : adx);
     if (bdx == -1)
-      clear_parbar('(');
+      clear_paren_brace_counts('(');
     if (cdx == -1)
-      clear_parbar('[');
+      clear_paren_brace_counts('[');
   }
   return (gnu_readline_buf);
 }
@@ -485,7 +470,7 @@ gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
   char *result_buf_ptr = result_buf;
   int idx;
 
-  *result_buf = '\0';
+  *result_buf_ptr = '\0';
 
   if (hist_list == NULL)
     return NULL;
