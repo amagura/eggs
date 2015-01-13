@@ -29,34 +29,51 @@
 
 #if _HAVE_LIBBSD // then we can use strlcat and strlcpy
 #include <bsd/string.h>
-#define _CHK_READLINE_EGG_STRCAT(dst_str, src_str) strlcat((dst_str), (src_str), sizeof (dst_str))
-//#define _CHK_READLINE_EGG_STRCPY(dst_str, src_str) strlcpy(dst_str, src_str, sizeof dst_str)
-#define _CHK_READLINE_EGG_STRCPY(dst_str, src_str) _CHK_READLINE_EGG_STRCAT(dst_str, src_str)
-
-#define _CHK_READLINE_EGG_STRCAT_FN_USED "strlcat"
-#define _CHK_READLINE_EGG_STRCPY_FN_USED _CHK_READLINE_EGG_STRCAT_FN_USED
+#define _CHKSCM_RL_EGG_STRCAT(_CHKSCM_RL_EGG__DST, _CHKSCM_RL_EGG__SRC) \
+  strlcat((_CHKSCM_RL_EGG__DST), (_CHKSCM_RL_EGG__SRC), sizeof (_CHKSCM_RL_EGG__DST))
+//#define _CHKSCM_RL_EGG_STRCPY(dst_str, src_str) strlcpy(dst_str, src_str, sizeof dst_str)
+#define _CHKSCM_RL_EGG_STRCAT_FN_USED "strlcat"
 #else
-#define _CHK_READLINE_EGG_STRCAT(dst_str, src_str) strncat(dst_str, src_str, (sizeof dst_str - strlen(dst_str) - 1))
-#define _CHK_READLINE_EGG_STRCPY(dst_str, src_str) _CHK_READLINE_EGG_STRCAT(dst_str, src_str)
-
-#define _CHK_READLINE_EGG_STRCAT_FN_USED "strncat"
-#define _CHK_READLINE_EGG_STRCPY_FN_USED _CHK_READLINE_EGG_STRCAT_FN_USED
+#define _CHKSCM_RL_EGG_STRCAT(_CHKSCM_RL_EGG__DST, _CHKSCM_RL_EGG__SRC) \
+  strncat((_CHKSCM_RL_EGG__DST), (_CHKSCM_RL_EGG__SRC), (sizeof (_CHKSCM_RL_EGG__DST) - strlen((_CHKSCM_RL_EGG__DST)) - 1))
+#define _CHKSCM_RL_EGG_STRCAT_FN_USED "strncat"
 #endif
 
 /*@ignore@*/
 #if 0 // NOTE change this to 1 to enable debug messages
-#define _CHK_READLINE_EGG_DEBUG(format, ...) fprintf(stderr, format, __VA_ARGS__)
-#define _CHK_READLINE_EGG_DEBUG_LIT(format, ...) fprintf(stderr, format, #__VA_ARGS__)
+#define _CHKSCM_RL_EGG_DEBUG(format, ...) fprintf(stderr, format, __VA_ARGS__)
+#define _CHKSCM_RL_EGG_DEBUG_LIT(format, ...) fprintf(stderr, format, #__VA_ARGS__)
 #else
-#define _CHK_READLINE_EGG_DEBUG(format, ...)
-#define _CHK_READLINE_EGG_DEBUG_LIT(format, ...)
+#define _CHKSCM_RL_EGG_DEBUG(format, ...)
+#define _CHKSCM_RL_EGG_DEBUG_LIT(format, ...)
 #endif
 /*@end@*/
 
+struct total_t {
+  int open;
+  int close;
+};
+
+struct delim_t {
+  int open;
+  int close;
+};
+
+struct key_balance_t {
+  int start_pos;
+  int end_pos;
+  int total[2]; // 0 -> open, 1 -> close
+};
+
+struct key_t {
+  struct count_t count;
+  char token[2];
+};
+
 struct balance_t {
-  int paren[3]; // 0 -> total, 1 -> open, 2 -> close
-  int brace[3]; // 0 -> total, 1 -> open, 2 -> close
-  int quote;
+  struct key_t parens;
+  struct key_t braces;
+  int dbl_quotes;
 } balance;
 
 static int gnu_readline_bounce_ms = 500;
@@ -78,116 +95,111 @@ static struct gnu_readline_current_paren_color_t {
                                                     ^ -------- ^ ; WRONG
    ~ Alexej
 */
-// >>>1
-inline void * // returns the memory address of the tail of a string (i.e. the offset just before the null-terminator)
-strtail_addr(char *string)
+inline char
+peek_chr(char *cp, char *stringp, bool direct)
 {
-  return &string[strlen(string) - 1];
-}
-
-inline void * // returns the memory address of the null-terminator within a string
-strend_addr(char *string)
-{
-  return &string[strlen(string)];
-}
-
-inline char // returns the character preceding the character referenced by the memory address `stringp'
-prev_char(char *stringp, char *string)
-{
-  char result = '\0';
-  if (stringp != string) {
-    --stringp;
-    result = *stringp;
-    ++stringp;
+  if (direct) {
+    char next = '\0';
+    if (cp != &stringp[strlen(stringp) - 1]) {
+      next = *(++cp);
+      --cp;
+    } else {
+      next = *cp;
+    }
+    return next;
   } else {
-    result = *stringp;
+    char prev = '\0';
+    if (cp != stringp) {
+      prev = *(--cp);
+      ++cp;
+    } else {
+      prev = *cp;
+    }
+    return prev;
   }
-  return result;
 }
 
-inline bool // is the memory address referenced by `stringp' the same memory address as `&string[0]'
-ptr_strhead(char *stringp, char *string)
+inline int // returns -1 when stringp points to a string containing only NULL
+excess_open_delim(char *stringp, const char open_delim, const char close_delim)
 {
-  return stringp == string;
-}
+  int open = 0;
+  int close = 0;
+  char *cp = &stringp[strlen(stringp)];
 
-inline bool // is the memory address `stringp' __not__ the same as address as `&string[0]'
-ptr_not_strhead(char *stringp, char *string)
-{
-  return !ptr_strhead(stringp, string);
-}
-// <<<1
-inline int /* returns the _balance_ of quotes within a string */
-quote_in_string(char *string)
-{
-  char *str_ptr = strend_addr(string);
-
-  if (str_ptr == string)
-    return 0;
+  if (cp == stringp)
+    return -1;
 
   do {
-    if (ptr_not_strhead(str_ptr, string) && prev_char(str_ptr, string) == '\\')
+    if (cp != stringp && peek_chr(cp, stringp, false) == '\\')
       continue;
 
-    if (*str_ptr == '"') {
-      ++balance.quote;
-    }
-  } while (str_ptr-- != string);
+    if (*cp == close_delim)
+      ++close;
+    else if (*cp == open_delim)
+      ++open;
+  } while(cp-- != stringp);
 
-  if (balance.quote == 0)
-    return -1;
-  _CHK_READLINE_EGG_DEBUG("return balance.quote: %d\n", balance.quote);
-  return balance.quote % 2;
+  if (open_delim == close_delim && close > 0) {
+    if (close % 2 == 1)
+      while(open++ < --close);
+    else
+      close %= 2;
+  }
+  return open - close;
 }
 
-inline void
-clear_paren_brace_counts(char token)
+inline struct key_t
+clear_key_counts(struct key_t keys)
 {
   int idx = 0;
   for (; idx < 3; ++idx) {
-    if (token == '(' || token == ')')
-      balance.paren[idx] = 0;
-    if (token == '[' || token == ']')
-      balance.brace[idx] = 0;
+    keys.counts[idx] = 0;
   }
+  return keys;
 }
 
-inline int /* returns the total number of parens or braces in a string */
-parens_braces_in_string(char *string, char add_token)
+inline struct balance_t
+key_balance_in_string(char *string, char open_key, char close_key)
 {
-  int *idxp = NULL;
-  char sub_token = '\0';
-  if (add_token == '(') {
-    idxp = balance.paren;
-    sub_token = ')';
-  } else if (add_token == '[') {
-    idxp = balance.brace;
-    sub_token = ']';
-  }
+  struct key_t keys = count_key_in_string(string, open_key, close_key);
+  keys.counts[0] =
 
-  char *str_ptr = strend_addr(string);
 
-  if (str_ptr == string)
-    return 0;
+inline struct key_t
+count_key_in_string(char *string, char open_key, char close_key)
+{
+  struct key_t keys;
+  keys.count[0] = 0;
+  keys.count[1] = 0;
+  keys.count[2] = 0;
+  int *idxp = keys.counts;
+  char *char_ptr = strend_addr(string);
+  int dbl_quote_balance = (dbl_quotes_in_string(string) % 2);
+  keys.tokens[0] = open_key;
+  keys.tokens[1] = close_key;
+
+  if (char_ptr == string)
+    return keys;
 
   do {
-    if (ptr_not_strhead(str_ptr, string) && prev_char(str_ptr, string) == '\\')
+    if (char_ptr != string && prev_char(char_ptr, string) == '\\')
       continue;
 
-    _CHK_READLINE_EGG_DEBUG("balance.quote: %d\n", balance.quote);
-    if (*str_ptr == add_token && balance.quote < 1) {
+    _CHKSCM_RL_EGG_DEBUG("balance.quote: %d\n", dbl_quote_balance);
+    if (*char_ptr == open_key && dbl_quote_balance < 1) { // checks to make sure we are not in a quoted string
       ++(*idxp); // increment total
       ++(*(++idxp)); // move to open, and increment
       --idxp; // move back to total
-    } else if (*str_ptr == sub_token && balance.quote < 1) {
+    } else if (*char_ptr == close_key && dbl_quote_balance < 1) {
       --(*idxp); // deincrement total
       ++idxp; // move to open
       ++(*(++idxp)); // move to close and increment
       --idxp; // move back to open
       --idxp; // move back to total
     }
-  } while (str_ptr-- != string);
-  return *idxp;
+  } while (char_ptr-- != string);
+
+  return keys;
 }
 
 #if 0 // NOT YET IMPLEMENTED
@@ -196,7 +208,7 @@ highlight_paren()
 {
   char *rl_ptr = rl_line_buffer;
   while (rl_ptr != &rl_line_buffer[rl_point]) { ++rl_ptr; }
-  _CHK_READLINE_EGG_DEBUG("%s\n", rl_ptr);
+  _CHKSCM_RL_EGG_DEBUG("%s\n", rl_ptr);
   return 0;
 }
 #endif
@@ -206,8 +218,30 @@ highlight_paren()
 /* Returns: (if positive) the position of the matching paren
             (if negative) the number of unmatched closing parens */
 inline int
-gnu_readline_skip(int pos, char open_key, char close_key)
+matching_key_pos(char *key_location, const char open_key, const char close_key)
 {
+  if (pos == 0)
+    return NULL;
+
+  if (open_key == '"') {
+
+
+
+
+  do {
+    if (pos > 0 && rl_line_buffer[pos - 1] == '\\') {
+      continue;
+
+    if (rl_line_buffer[pos] == open_key && ) {
+
+
+
+
+  while (char_ptr) {
+
+  do {
+    if (
+
   while (--pos > -1) {
     if (pos > 0 && rl_line_buffer[pos - 1] == '\\') {
       continue;
@@ -230,11 +264,11 @@ gnu_readline_find_match(char key)
     return gnu_readline_skip(rl_point - 1, '(', ')');
   else if (key == ']')
     return gnu_readline_skip(rl_point - 1, '[', ']');
-  return 0; 
+  return 0;
 }
 
-// Delays, but returns early if key press occurs 
-inline void
+// Delays, but returns early if key press occurs
+void
 gnu_readline_timid_delay(int ms)
 {
   struct pollfd pfd;
@@ -357,7 +391,7 @@ gnu_readline_append_history(char *filename)
 #if 0
 void gnu_readline_highlight_matches()
 {
-  _CHK_READLINE_EGG_DEBUG("match-position: %d\n", find_match(')'));
+  _CHKSCM_RL_EGG_DEBUG("match-position: %d\n", find_match(')'));
 }
 #endif
 #if 0
@@ -383,7 +417,7 @@ gnu_readline_init()
 }
 
 // Called from scheme to get user input
-char *
+char * /* TODO rename to `rlegg_readline_line_from_scheme' */
 gnu_readline_readline(char *prompt, char *prompt2)
 {
   char *empty_prompt;
@@ -394,8 +428,8 @@ gnu_readline_readline(char *prompt, char *prompt2)
     free(gnu_readline_buf);
     gnu_readline_buf = NULL;
   }
-  
-  if (!(balance.quote || balance.paren[0] || balance.brace[0]))
+
+  if (!(balance[0] || balance[1] || balance[2]))
     gnu_readline_buf = readline(prompt);
   else
     gnu_readline_buf = readline(prompt2);
@@ -410,7 +444,7 @@ gnu_readline_readline(char *prompt, char *prompt2)
 
   if (strlen(rl_line_buffer) > 0) {
     int adx = quote_in_string(rl_line_buffer);
-    _CHK_READLINE_EGG_DEBUG("quote_in_string: %d\n", adx);
+    _CHKSCM_RL_EGG_DEBUG("quote_in_string: %d\n", adx);
     int bdx = parens_braces_in_string(rl_line_buffer, '(');
     int cdx = parens_braces_in_string(rl_line_buffer, '[');
     balance.quote = (adx == -1 ? 0 : adx);
@@ -436,7 +470,7 @@ char *
 gnu_history_get(int ind, int time)
 {
   HIST_ENTRY *entry = NULL;
-  
+
   entry = history_get(ind);
 
   if (entry == NULL)
@@ -474,14 +508,13 @@ gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
 
   if (hist_list == NULL)
     return NULL;
-  _CHK_READLINE_EGG_DEBUG("_CHK_READLINE_EGG_STRCPY: %s\n", _CHK_READLINE_EGG_STRCPY_FN_USED);
-  _CHK_READLINE_EGG_DEBUG("_CHK_READLINE_EGG_STRCAT: %s\n", _CHK_READLINE_EGG_STRCAT_FN_USED);
-  _CHK_READLINE_EGG_STRCPY(result_buf, hist_list[0]->line);
-  _CHK_READLINE_EGG_STRCAT(result_buf, "\n");
+  _CHKSCM_RL_EGG_DEBUG("_CHKSCM_RL_EGG_STRCAT: %s\n", _CHKSCM_RL_EGG_STRCAT_FN_USED);
+  _CHKSCM_RL_EGG_STRCAT(result_buf, hist_list[0]->line);
+  _CHKSCM_RL_EGG_STRCAT(result_buf, "\n");
 
   for (idx = 1; idx < history_length; ++idx) {
-    _CHK_READLINE_EGG_STRCAT(result_buf, hist_list[idx]->line);
-    _CHK_READLINE_EGG_STRCAT(result_buf, "\n");
+    _CHKSCM_RL_EGG_STRCAT(result_buf, hist_list[idx]->line);
+    _CHKSCM_RL_EGG_STRCAT(result_buf, "\n");
   }
   return result_buf_ptr;
 }
