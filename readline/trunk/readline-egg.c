@@ -271,7 +271,7 @@ quote_in_string(char *str)
   return balance.quote % 2;
 }
 
-inline void
+INLINE void
 clear_paren_brace_counts(char token)
 {
   int idx = 0;
@@ -283,8 +283,8 @@ clear_paren_brace_counts(char token)
   }
 }
 
-inline int /* returns the total number of parens or braces in a string */
-parens_braces_in_string(char *string, char add_token)
+INLINE int /* returns the total number of parens or braces in a string */
+parens_braces_in_string(char *str, char add_token)
 {
   int *idxp = NULL;
   char sub_token = '\0';
@@ -296,28 +296,28 @@ parens_braces_in_string(char *string, char add_token)
     sub_token = ']';
   }
 
-  char *str_ptr = strend_addr(string);
+  char *cp = &str[strlen(str)];
 
-  if (str_ptr == string)
+  if (cp == str)
     return 0;
 
   do {
-    if (ptr_not_strhead(str_ptr, string) && prev_char(str_ptr, string) == '\\')
+    if (cp != str && peek_chr(cp, str, false) == '\\')
       continue;
 
     RL_EGG_DEBUG("balance.quote: %d\n", balance.quote);
-    if (*str_ptr == add_token && balance.quote < 1) {
+    if (*cp == add_token && balance.quote < 1) {
       ++(*idxp); // increment total
       ++(*(++idxp)); // move to open, and increment
       --idxp; // move back to total
-    } else if (*str_ptr == sub_token && balance.quote < 1) {
+    } else if (*cp == sub_token && balance.quote < 1) {
       --(*idxp); // deincrement total
       ++idxp; // move to open
       ++(*(++idxp)); // move to close and increment
       --idxp; // move back to open
       --idxp; // move back to total
     }
-  } while (str_ptr-- != string);
+  } while (cp-- != str);
   return *idxp;
 }
 
@@ -336,25 +336,24 @@ highlight_paren()
 
 /* Returns: (if positive) the position of the matching paren
             (if negative) the number of unmatched closing parens */
-inline int
+INLINE int
 gnu_readline_skip(int pos, char open_key, char close_key)
 {
   while (--pos > -1) {
-    if (pos > 0 && rl_line_buffer[pos - 1] == '\\') {
+    if (pos > 0 && rl_line_buffer[pos - 1] == '\\')
       continue;
-    } else if (rl_line_buffer[pos] == open_key) {
+    else if (rl_line_buffer[pos] == open_key)
       return pos;
-    } else if (rl_line_buffer[pos] == close_key) {
-      pos = gnu_readline_skip(pos, open_key, close_key); // FIXME, I'm a recurisve call
-    } else if (rl_line_buffer[pos] == '"') {
-      pos = gnu_readline_skip(pos, '"', '"'); // FIXME, I'm a recursive call
-    }
+    else if (rl_line_buffer[pos] == close_key)
+      pos = gnu_readline_skip(pos, open_key, close_key);
+    else if (rl_line_buffer[pos] == '"')
+      pos = gnu_readline_skip(pos, '"', '"');
   }
   return pos;
 }
 
 // Finds the matching paren (starting from just left of the cursor)
-inline int
+INLINE int
 gnu_readline_find_match(char key)
 {
   if (key == ')')
@@ -365,7 +364,7 @@ gnu_readline_find_match(char key)
 }
 
 // Delays, but returns early if key press occurs
-inline void
+INLINE void
 gnu_readline_timid_delay(int ms)
 {
   struct pollfd pfd;
@@ -376,6 +375,8 @@ gnu_readline_timid_delay(int ms)
 
   poll(&pfd, 1, ms);
 }
+/**
+  Inline Functions - END **/
 
 // Bounces the cursor to the matching paren for a while
 int
