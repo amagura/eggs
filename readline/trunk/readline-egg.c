@@ -40,7 +40,7 @@
 #endif
 
 #ifndef DEBUG
-#define DEBUG 0
+#define DEBUG 1
 #endif
 
 #if DEBUG /* NOTE change this to 1 to enable debug messages */
@@ -434,6 +434,7 @@ void paren_match_highlights(char *match_color, char *no_match_color)
 ////\\\\//// Tab Completion ////\\\\////
 
 // Prototype for callback into scm
+#ifndef RL_EGG_TESTING
 C_word
 gnu_readline_scm_complete(char *, int, int);
 
@@ -469,14 +470,9 @@ gnu_readline_tab_complete(const char *text, int status) {
   copied_str[len] = '\0';
   return copied_str;
 }
+#endif
 
-/*  grants access to the gnu_history_newlines variable.
- *
- *  XXX using a `define-foreign-variable' to gain access to gnu_history_newlines won't work as expected.
- *  I don't _know_ this, but I suspect it's because it only grabs a snapshot of the variable and is not
- *  actually binding itself _to the variable_
- */
-int
+int // grants access to the gnu_history_newlines variable.
 gnu_history_new_lines()
 {
   return gnu_history_newlines;
@@ -500,6 +496,7 @@ char *gnu_make_arrow_code()
 #endif
 
 // Set everything up
+#ifndef RL_EGG_TESTING
 void
 gnu_readline_init()
 {
@@ -555,6 +552,7 @@ gnu_readline_readline(char *prompt, char *prompt2)
   }
   return (gnu_readline_buf);
 }
+#endif
 
 void
 gnu_readline_signal_cleanup()
