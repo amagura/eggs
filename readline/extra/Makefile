@@ -77,3 +77,6 @@ doc:
 	#cd $(mydir); \
 	#  cd ../trunk; \
 	#  for _f in $(DOCS); do asciidoc --theme volnitsky "$$_f"; done
+
+% : %.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -lreadline -o $@ $<

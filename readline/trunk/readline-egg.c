@@ -29,12 +29,31 @@
 
 /** Macros - BEGIN **/
 /*** Conditional Macros ***/
-#if 1 /* NOTE change this to 1 to enable debug messages */
-#define RL_EGG_DEBUG(format, ...) fprintf(stderr, (format), (__VA_ARGS__))
-#define RL_EGG_SDOC_DEBUG(format, ...) fprintf(stderr, ((__VA_ARGS__): ## (format)), (__VA_ARGS__))
+#ifndef INLINE
+#ifdef __inline__
+#define INLINE __inline__
+#elif defined __GNUC__ && defined __GNUC_GNU_INLINE__
+#define INLINE __GNUC_GNU_INLINE__
 #else
+#define INLINE inline
+#endif
+#endif
+
+#ifndef DEBUG
+#define DEBUG 0
+#endif
+
+#if DEBUG /* NOTE change this to 1 to enable debug messages */
+#define RL_EGG_TRACE(format, ...) \
+  do { \
+    fprintf(stderr, "++ %s(%d):\n", __FILE__, __LINE__); \
+    fprintf(stderr, (format), (__VA_ARGS__)); \
+    fprintf(stderr, "\n-- %s %s `%s'\n\n", "In", "function", __FUNCTION__); \
+  } while(0)
+#define RL_EGG_DEBUG(format, ...) RL_EGG_TRACE((format), (__VA_ARGS__))
+#else
+#define RL_EGG_TRACE(format, ...)
 #define RL_EGG_DEBUG(format, ...)
-#define RL_EGG_SDOC_DEBUG(format, ...)
 #endif
 
 #if _HAVE_LIBBSD /* then we can use strlcat */
@@ -52,9 +71,9 @@ struct delim_count {
   int close;
 };
 
-static int gnu_readline_bounce_ms = 500;
-static int gnu_history_newlines = 0;
-static char *gnu_readline_buf = NULL;
+static int gnu_readline_bounce_ms = 500; // FIXME I'm a global variable... I think.
+static int gnu_history_newlines = 0; // FIXME I'm a global
+static char *gnu_readline_buf = NULL; // FIXME I'm a global
 
 #if 0 /* NOT YET IMPLEMENTED */
 static struct gnu_readline_current_paren_color_t {
@@ -71,7 +90,7 @@ static struct gnu_readline_current_paren_color_t {
                                                     ^ -------- ^ ; WRONG
    ~ Alexej
 */
-inline char
+INLINE char
 peek_chr(char *cp, char *stringp, bool direct)
 {
   if (direct) {
@@ -95,39 +114,39 @@ peek_chr(char *cp, char *stringp, bool direct)
   }
 }
 
-inline void
-strnof_delim(char *str, const char open_delim, const char close_delim, struct delim_count count)
+INLINE int *
+strnof_delim(char *str, const char open_delim, const char close_delim, int *idx)
 {
   char *cp = &str[strlen(str)];
 
+  if (idx == NULL) {
+    int kdx[2];
+    idx = kdx;
+  }
   if (cp == str)
-  return;
+    return NULL;
 
   do {
     if (cp != str && peek_chr(cp, str, false) == '\\')
       continue;
 
     if (*cp == close_delim)
-      ++count.close;
+      ++idx[1];
     else if (*cp == open_delim)
-      ++count.open;
+      ++idx[0];
   } while(cp-- != str);
 
-  if (open_delim == close_delim && count.close > 0) {
-    if (count.close % 2 == 1)
-      while(count.open++ < --count.close);
-    else
-      count.close %= 2;
-  }
-}
+  RL_EGG_DEBUG("open: %d\nclose:%d\n", idx[0], idx[1]);
 
-inline struct delim_count
-strnof_delim_nstrct(char *str, const char open_delim, const char close_delim)
-{
-  struct delim_count count;
-  memset(&count, 0, sizeof(count));
-  strnof_delim(str, open_delim, close_delim, count);
-  return count;
+  if (open_delim == close_delim && idx[1] > 0) {
+    if (idx[0] % 2 == 1)
+      while(idx[0]++ < --idx[1]);
+    else
+      idx[1]%= 2;
+  }
+  RL_EGG_DEBUG("open: %d\nclose:%d\n", idx[0], idx[1]);
+
+  return idx;
 }
 
 #if 0 // NOT YET IMPLEMENTED
@@ -147,7 +166,7 @@ highlight_paren()
             (if negative) the number of unmatched closing parens */
 
 // Finds the matching paren (starting from just left of the cursor)
-inline int
+INLINE int
 gnu_readline_skip(int pos, const char open_key, const char close_key)
 {
   while (--pos > -1) {
@@ -163,7 +182,7 @@ gnu_readline_skip(int pos, const char open_key, const char close_key)
   return pos;
 }
 
-inline int
+INLINE int
 gnu_readline_find_match(char key)
 {
   if (key == ')')
