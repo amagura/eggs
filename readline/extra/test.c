@@ -15,14 +15,6 @@ struct balance_t {
   int quote;
 } balance;
 
-#if 1
-#define _CHK_READLINE_EGG_DEBUG(format, ...) fprintf(stderr, format, __VA_ARGS__)
-#define _CHK_READLINE_EGG_DEBUG_LIT(format, ...) fprintf(stderr, format, #__VA_ARGS__)
-#else
-#define _CHK_READLINE_EGG_DEBUG(format, ...)
-#define _CHK_READLINE_EGG_DEBUG_LIT(format, ...)
-#endif
-
 int skip(int pos, int open_key, int close_key)
 {
   while (--pos > -1) {
@@ -39,51 +31,6 @@ int skip(int pos, int open_key, int close_key)
   return pos;
 }
 
-// Return what the balance is between opening and closing keys
-int match_balance(int open_key, int close_key)
-{
-  int pos;
-  int open = 0;
-
-  // Can't use rl_end intead of strlen: gives length of whole buffer
-  pos = skip(strlen(rl_line_buffer), open_key, close_key);
-  if (pos < 0)
-    return pos + 1;
-
-  while (pos >= 0) {
-    ++open;
-    pos = skip(pos, open_key, close_key);
-  }
-
-  return open;
-}
-
-//>>>1
-inline char * strtail_addr(const char *string)
-{
-  return (char *)&string[strlen(string) - 1];
-}
-
-inline char * strend_addr(const char *string)
-{
-  return (char *)&string[strlen(string)];
-}
-
-inline bool char_is_quote(char _char, int count)
-{
-  return (_char == '"') && (count % 2 == 0);
-}
-
-inline bool ptr_strhead(char *ptr, char *string)
-{
-  return ptr == string;
-}
-
-inline bool ptr_not_strhead(char *ptr, char *string)
-{
-  return !ptr_strhead(ptr, string);
-}
-
 inline char prev_char(char *ptr, char *string)
 {
   char result = '\0';
@@ -98,7 +45,7 @@ inline char prev_char(char *ptr, char *string)
 }
 //<<<1
 
-inline void
+  inline void
 init_balance()
 {
   int idx = 0;
@@ -109,82 +56,12 @@ init_balance()
   balance.quote = 0;
 }
 
-#if 0
-inline int char_balance_in_string(char *string, char add_token, char sub_token)
-{
-    return 0;
-
-  while (char_ptr != &string[0] && --char_ptr) {
-    //_CHK_READLINE_EGG_DEBUG("*char_ptr: %c\n", *char_ptr);
-    if (ptr_not_strhead(char_ptr, string) && prev_charstr(char_ptr, string) == '\\') // XXX here we increment so as to undo the effect of prior deincrement
-      continue;
-
-    if (*char_ptr == add_token && (ptr_strhead(char_ptr, string) || (ptr_not_strhead(char_ptr, string) && *(--char_ptr) != '"')) && balance.quote < 1) {
-      //_CHK_READLINE_EGG_DEBUG("found add_token: %c\n", add_token);
-      ++charc;
-      _CHK_READLINE_EGG_DEBUG("charc add_token: %d\n", charc);
-      switch (add_token) {
-        case '(':
-          ++balance.paren.open;
-          break;
-        case '[':
-          ++balance.brace.open;
-          break;
-        case '"':
-          charc % 2 == 0 || ++balance.quote;
-          break;
-      }
-    }
-    else if (*char_ptr == sub_token) {
-      --charc;
-      _CHK_READLINE_EGG_DEBUG("charc sub_token: %d\n", charc);
-      switch (sub_token) {
-        case ')':
-          ++balance.paren.close;
-          break;
-        case ']':
-          ++balance.brace.close;
-          break;
-        case '"':
-          charc % 2 == 0 || ++balance.quote;
-          break;
-      }
-    }
-  }
-  return charc;
-}
-
-int check_balance(char open_key)
-{
-  int rl_length = strlen(rl_line_buffer);
-  char close_key = (open_key == '('
-      ? ')'
-      : (open_key == '['
-        ? ']'
-        : '"'));
-
-  int balanced = key_balance(rl_length, open_key, close_key);
-  switch (open_key) {
-    case '(':
-      (balanced == 0 || balanced == -1 || balanced % 2 == 0) || ++balance.paren.open;
-      break;
-    case '[':
-      (balanced == 0 || balanced == -1 || balanced % 2 == 0) || ++balance.brace.open;
-      break;
-    case '"':
-      (balanced == 0 || balanced == -1 || balanced % 2 == 0) || ++balance.quote; /* this extra check keeps `" "` from making the
-                                                                                second "unclosed expression" prompt from appearing. */
-      break;
-  }
-  return balanced;
-}
-#endif
-
 struct count_t {
   int open;
   int close;
 };
 
+#if 0
 struct count_t
 count_delim(char *stringp, char open_key, char close_key) {
   struct count_t count;
@@ -204,7 +81,7 @@ count_delim(char *stringp, char open_key, char close_key) {
 
   if (open_key == close_key) {
     if (count.close % 2 == 1) {
-     while (count.open++ < --count.close);
+      while (count.open++ < --count.close);
     } else {
       count.open = count.close / 2;
       count.close /= 2;
@@ -213,8 +90,9 @@ count_delim(char *stringp, char open_key, char close_key) {
 
   return count;
 }
+#endif
 
-inline char
+  inline char
 peek_chr(char *cp, char *stringp, bool direct)
 {
   if (direct) {
@@ -238,75 +116,115 @@ peek_chr(char *cp, char *stringp, bool direct)
   }
 }
 
-inline int // returns -1 when stringp points to a string containing only NULL
-excess_open_delim(char *stringp, const char open_delim, const char close_delim)
-{
-  int open = 0;
-  int close = 0;
-  char *cp = &stringp[strlen(stringp)];
+struct delim_count_t {
 
-  if (cp == stringp)
-    return -1;
+  int open;
+  int close;
+};
 
-  do {
-    if (cp != stringp && peek_chr(cp, stringp, false) == '\\')
-      continue;
-
-    if (*cp == close_delim)
-      ++close;
-    else if (*cp == open_delim)
-      ++open;
-  } while(cp-- != stringp);
-
-  if (open_delim == close_delim && close > 0) {
-    if (close % 2 == 1)
-      while(open++ < --close);
-    else
-      close %= 2;
-  }
-  return open - close;
-}
-
-char *
-matching_delim_pos(char *stringp, char open_key, char close_key)
-{
-  char *cp = &stringp[strlen(stringp)];
-
-  do {
-
-  } while(0);
-}
-
-
-
-
-
-
-int main()
+  inline struct delim_count_t
+strnof_delim_(char *str, char delim[2])
 {
 
-  char string[BUFSIZ] = "{{{{{helloa} } } } ";
-  printf("excess open: %d\n", excess_open_delim(string, '{', '}'));
-  char *tmp;
-  tmp = strtok(string, "\"");
-  printf("%s\n", tmp);
-  tmp = strtok(NULL, "\"");
-  printf("%s\n", tmp);
+
+
+#define RL_EGG_STRNOF_DELIM(STRING_PTR, DELIM_PTR, DELIM_STRUCT)	\
+  do {								        \
+    if (!(DELIM_STRUCT))						\
+      strnof_delim_(STRING_PTR, DELIM_PTR);				\
+    else								\
+      strnof_delim(STRING_PTR, DELIM_PTR, DELIM_STRUCT);		\
+  } while(0)
+
+
+
+
+  inline struct delim_cont_t * // returns -1 when stringp points to a string containing only NULL
+    count_delim(char *stringp, char *delim, struct delim_count_t *count)
+    {
+      if (!(count == NULL))
+        struct delim_count_t *_count;
+      memset(count, 0, sizeof(*count));
+      char *cp = &stringp[strlen(stringp)];
+
+      if (cp == stringp)
+        return NULL;
+
+      do {
+        if (cp != stringp && peek_chr(cp, stringp, false) == '\\')
+          continue;
+
+        if (*cp == close_delim)
+          ++count->close;
+        else if (*cp == open_delim)
+          ++count->open;
+      } while(cp-- != stringp);
+
+      if (open_delim == close_delim && count->close > 0) {
+        if (count->close % 2 == 1)
+          while(count->open++ < --count->close);
+        else {
+          count->close %= 2;
+        }
+      }
+      return count;
+    }
+
+  char *
+    matching_delim_pos(char *stringp, char open_key, char close_key)
+    {
+      char *cp = &stringp[strlen(stringp)];
+
+      do {
+
+      } while(0);
+    }
+
+  inline int
+    _skip(int pos, char *string, char open_delim, char close_delim)
+    {
+      while (--pos > -1) {
+        if (pos > 0 && string[pos - 1] == '\\')
+          continue;
+        if (string[pos] == open_delim)
+          return pos;
+        else if (string[pos] == close_delim)
+          pos = _skip(pos, string, open_delim, close_delim);
+        else if (string[pos] == '"')
+          pos = _skip(pos, string, '"', '"');
+      }
+      return pos;
+    }
+
+  int main()
+  {
+    char string[BUFSIZ] = "{{{{{helloa}";
+    char *cp = &string[strlen(string)];
+    char strin[BUFSIZ] = "}}}}";
+    struct delim_count_t *count;
+    count_delim(string, '{', '}', NULL);
+    printf("open: %d\nclose: %d\n", count->open, count->close);
+    printf("match pos: %d\n", _skip(strlen(string)-1, string, '{', '}'));
+    char *_cp = strrchr(string, '{');
+    printf("same %d\n", _cp == &string[4]);
+    printf("_cp: %c\n", *_cp);
+
+
 #if 0
-  init_balance();
+    init_balance();
 
-  checks("\"hello");
-  checks("\"");
-  checks("\"");
-  checks("\" \"");
-  checks("\"\"");
-  checks("(hello");
-  checks("((");
-  checks(")");
-  checks("(");
-  checks(")");
-  checks(")");
-  checks("\(");
+    checks("\"hello");
+    checks("\"");
+    checks("\"");
+    checks("\" \"");
+    checks("\"\"");
+    checks("(hello");
+    checks("((");
+    checks(")");
+    checks("(");
+    checks(")");
+    checks(")");
+    checks("\(");
 #endif
-  return 0;
-}
+    return 0;
+  }
