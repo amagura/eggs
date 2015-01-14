@@ -96,32 +96,157 @@ static struct gnu_readline_current_paren_color_t {
  *                                                   ^ -------- ^ ; WRONG
  *  ~ Alexej
  */
-inline char // returns the character preceding the character referenced by the memory address `stringp'
-prev_char(char *stringp, char *string)
+
+/**
+  Globals - END **/
+/**
+  Inline Functions - BEGIN **/
+INLINE void *
+ptr_or_null(void *ptr)
 {
-  char result = '\0';
-  if (stringp != string) {
-    --stringp;
-    result = *stringp;
-    ++stringp;
+  if (ptr)
+    return ptr;
+  else
+    return NULL;
+}
+
+INLINE void
+free_when_null(void *test, void *ptr)
+{
+  if (!test)
+    free(ptr);
+}
+
+INLINE char
+peek_chr(char *cp, char *stringp, bool direct)
+{
+  if (direct) {
+    char next = '\0';
+    if (cp != &stringp[strlen(stringp) - 1]) {
+      next = *(++cp);
+      --cp;
+    } else {
+      next = *cp;
+    }
+    return next;
   } else {
-    result = *stringp;
+    char prev = '\0';
+    if (cp != stringp) {
+      prev = *(--cp);
+      ++cp;
+    } else {
+      prev = *cp;
+    }
+    return prev;
+  }
+}
+
+INLINE int
+strnof_chr(char *str, const char chr)
+{
+  char *cp = &str[strlen(str)];
+  int count = 0;
+
+  if (cp == str)
+    return -1;
+
+  do {
+    if (cp != str && peek_chr(cp, str, false) == '\\')
+      continue;
+
+    if (*cp == chr)
+      ++count;
+
+  } while(cp-- != str);
+  return count;
+}
+
+INLINE int *
+strnof_delim(char *str, const char open_delim, const char close_delim, int *count)
+{
+  char *cp = &str[strlen(str)];
+  int *idxp = count;
+
+  if (cp == str)
+    return NULL;
+
+  do {
+    if (cp != str && peek_chr(cp, str, false) == '\\')
+      continue;
+
+    if (*cp == close_delim) {
+      ++idxp; // goto close
+      ++(*idxp); // increment
+      --idxp; // goto open
+    } else if (*cp == open_delim) {
+      ++(*idxp); // increment
+    }
+  } while(cp-- != str);
+
+  if (open_delim == close_delim && count[1] > 0) {
+    if (count[1] % 2 == 1)
+      while(count[0]++ < --count[1]);
+    else {
+      count[0] = count[1] * 0.5;
+      count[1] *= 0.5;
+    }
+  }
+
+  RL_EGG_BEGIN_TRACE;
+  RL_EGG_DEBUG("open: %d\nclose: %d\n", *idxp, count[1]);
+  RL_EGG_END_TRACE;
+
+  return idxp;
+}
+
+char * // returns the substring of `str' that is not quoted
+str_nquotd(char *str)
+{
+  int idx[2];
+  int *hdx = strnof_delim(str, '"', '"', idx);
+  RL_EGG_DEBUG("idx[0]: %d\n", hdx[0]);
+  RL_EGG_DEBUG("idx[1]: %d\n", hdx[1]);
+
+  if (hdx[0] == 0) {
+    return str;
+  }
+  int even = hdx[0] - abs(hdx[0] - hdx[1]);
+
+  char *token, *rest, *tmp, *result;
+  tmp = NULL;
+  char str_slice[BUFSIZ]; // FIXME would like to use malloc, but can't seem to allocate enough memory to fit everything...
+
+  result = str_slice;
+  tmp = strdup(str);
+
+  if (tmp == NULL) {
+    perror(__FUNCTION__);
+    return str;
+  }
+
+  token = strtok_r(tmp, "\"", &rest);
+  RL_EGG_DEBUG("token: %s\n", token);
+  RL_EGG_STRCAT(str_slice, token);
+
+  bool need_free = true;
+
+  while ((token = strtok_r(NULL, "\"", &rest)) != NULL) {
+    RL_EGG_DEBUG("token (while): %s\n", token);
+    RL_EGG_DEBUG("even (while): %d\n", even);
+    if (even % 2 == 1) {
+      RL_EGG_STRCAT(str_slice, token);
+      --even;
+    } else {
+      ++even;
+    }
+    if (need_free) {
+      free(tmp);
+      need_free = false;
+    }
+    tmp = rest;
   }
   return result;
 }
-
-inline bool // is the memory address referenced by `stringp' the same memory address as `&string[0]'
-ptr_strhead(char *stringp, char *string)
-{
-  return stringp == string;
-}
-
-inline bool // is the memory address `stringp' __not__ the same as address as `&string[0]'
-ptr_not_strhead(char *stringp, char *string)
-{
-  return !ptr_strhead(stringp, string);
-}
-// <<<1
 inline int /* returns the _balance_ of quotes within a string */
 quote_in_string(char *string)
 {
