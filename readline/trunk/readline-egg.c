@@ -199,7 +199,7 @@ strnof_delim(char *str, const char open_delim, const char close_delim, int *coun
   return idxp;
 }
 
-char * // returns the substring of `str' that is not quoted
+INLINE char * // returns the substring of `str' that is not quoted
 str_nquotd(char *str)
 {
   int idx[2];
@@ -247,22 +247,23 @@ str_nquotd(char *str)
   }
   return result;
 }
-inline int /* returns the _balance_ of quotes within a string */
-quote_in_string(char *string)
-{
-  char *str_ptr = strend_addr(string);
 
-  if (str_ptr == string)
+INLINE int /* returns the _balance_ of quotes within a string */
+quote_in_string(char *str)
+{
+  char *cp = &str[strlen(str)];
+
+  if (cp == str)
     return 0;
 
   do {
-    if (ptr_not_strhead(str_ptr, string) && prev_char(str_ptr, string) == '\\')
+    if (cp != str && peek_chr(cp, str, false) == '\\')
       continue;
 
-    if (*str_ptr == '"') {
+    if (*cp == '"') {
       ++balance.quote;
     }
-  } while (str_ptr-- != string);
+  } while (cp-- != str);
 
   if (balance.quote == 0)
     return -1;
