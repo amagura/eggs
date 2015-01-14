@@ -27,13 +27,18 @@
 #include <readline/history.h>
 #include <stdbool.h>
 
-/** Macros - BEGIN **/
-/*** Conditional Macros ***/
+/**
+  Macros - BEGIN **/
+#define RL_EGG_WHEN_DO_GOTO(BOOL_EXP, STATEMENT, GOTO_LABEL) \
+  if ((BOOL_EXP)) { \
+    (STATEMENT); \
+    goto GOTO_LABEL; \
+  }
+/***
+  Conditional Macros ***/
 #ifndef INLINE
-#ifdef __inline__
+#ifdef __GNUC__
 #define INLINE __inline__
-#elif defined __GNUC__ && defined __GNUC_GNU_INLINE__
-#define INLINE __GNUC_GNU_INLINE__
 #else
 #define INLINE inline
 #endif
@@ -44,15 +49,17 @@
 #endif
 
 #if DEBUG /* NOTE change this to 1 to enable debug messages */
-#define RL_EGG_TRACE(format, ...) \
+#define RL_EGG_BEGIN_TRACE(format, ...) fprintf(stderr, "++ %s(%d):\n\n", __FILE__, __LINE__)
+#define RL_EGG_END_TRACE(format, ...) fprintf(stderr, "\n-- %s %s `%s'\n\n", "In", "function", __FUNCTION__)
+#define RL_EGG_DEBUG(format, ...) \
   do { \
-    fprintf(stderr, "++ %s(%d):\n\n", __FILE__, __LINE__); \
+    fprintf(stderr, "%s", "\e[36m"); \
     fprintf(stderr, (format), (__VA_ARGS__)); \
-    fprintf(stderr, "\n-- %s %s `%s'\n\n", "In", "function", __FUNCTION__); \
+    fprintf(stderr, "%s", "\e[0m"); \
   } while(0)
-#define RL_EGG_DEBUG(format, ...) RL_EGG_TRACE((format), (__VA_ARGS__))
 #else
-#define RL_EGG_TRACE(format, ...)
+#define RL_EGG_BEGIN_TRACE(format, ...)
+#define RL_EGG_END_TRACE(format, ...)
 #define RL_EGG_DEBUG(format, ...)
 #endif
 
@@ -64,13 +71,11 @@
 #define RL_EGG_STRCAT(DESTINATION_STR, SOURCE_STR) \
   strncat((DESTINATION_STR), (SOURCE_STR), (sizeof (DESTINATION_STR) - strlen((DESTINATION_STR)) - 1))
 #endif
-/** Macros - END **/
+/**
+  Macros - END **/
 
-struct delim_count {
-  int open;
-  int close;
-};
-
+/**
+  Globals - BEGIN **/
 static int gnu_readline_bounce_ms = 500; // FIXME I'm a global variable... I think.
 static int gnu_history_newlines = 0; // FIXME I'm a global
 static char *gnu_readline_buf = NULL; // FIXME I'm a global
@@ -84,12 +89,17 @@ static struct gnu_readline_current_paren_color_t {
 #endif
 
 /* XXX readline already provides paren-bouncing:
-   (gnu-readline-parse-and-bind "set blink-matching-paren on")
+ *  (gnu-readline-parse-and-bind "set blink-matching-paren on")
+ *
+ *  XXX it however does ____NOT____ work.  built-in: (line 'a) ')
+ *                                                   ^ -------- ^ ; WRONG
+ *  ~ Alexej
+ */
 
-   XXX it however does ____NOT____ work.  built-in: (line 'a) ')
-                                                    ^ -------- ^ ; WRONG
-   ~ Alexej
-*/
+/**
+  Globals - END **/
+/**
+  Inline Functions - BEGIN **/
 INLINE char
 peek_chr(char *cp, char *stringp, bool direct)
 {
@@ -140,8 +150,10 @@ strnof_delim(char *str, const char open_delim, const char close_delim, int *idx)
   if (open_delim == close_delim && idx[1] > 0) {
     if (idx[1] % 2 == 1)
       while(idx[0]++ < --idx[1]);
-    else
-      idx[1] %= 2;
+    else {
+      idx[0] = idx[1] * .5;
+      idx[1] *= .5;
+    }
   }
   RL_EGG_DEBUG("open: %d\nclose:%d\n", idx[0], idx[1]);
 
@@ -190,6 +202,9 @@ gnu_readline_find_match(char key)
     return gnu_readline_skip(rl_point - 1, '[', ']');
   return 0;
 }
+
+/**
+  Inline Functions - END **/
 
 // Delays, but returns early if key press occurs
 void
@@ -339,11 +354,13 @@ gnu_readline_init()
 }
 
 // Called from scheme to get user input
-char * /* TODO rename to `rlegg_readline_line_from_scheme' */
+char *
 gnu_readline_readline(char *prompt, char *prompt2)
 {
   char *empty_prompt;
   int prompt_len;
+  static int balncd = 0;
+  int *jdx, *kdx, *idx;
   HIST_ENTRY *entry;
 
   if (gnu_readline_buf != NULL) {
@@ -365,16 +382,20 @@ gnu_readline_readline(char *prompt, char *prompt2)
   }
 
   if (strlen(rl_line_buffer) > 0) {
-    int adx = quote_in_string(rl_line_buffer);
-    _CHKSCM_RL_EGG_DEBUG("quote_in_string: %d\n", adx);
-    int bdx = parens_braces_in_string(rl_line_buffer, '(');
-    int cdx = parens_braces_in_string(rl_line_buffer, '[');
-    balance.quote = (adx == -1 ? 0 : adx);
-    if (bdx == -1)
-      clear_paren_brace_counts('(');
-    if (cdx == -1)
-      clear_paren_brace_counts('[');
+    idx = strnof_delim(rl_line_buffer, '(', ')', NULL);
+    RL_EGG_WHEN_DO_GOTO(!(bool)abs(idx[0] - idx[1]), ++balncd, free_idx);
+    jdx = strnof_delim(rl_line_buffer, '[', ']', NULL);
+    RL_EGG_WHEN_DO_GOTO(!(bool)abs(jdx[0] - jdx[1]), ++balncd, free_jdx);
+    kdx = strnof_delim(rl_line_buffer, '"', '"', NULL);
+    if (!(bool)abs(kdx[0] - kdx[1]))
+      ++balncd;
   }
+  free(kdx);
+free_jdx:
+  free(jdx);
+free_idx:
+  free(idx);
+
   return (gnu_readline_buf);
 }
 #endif

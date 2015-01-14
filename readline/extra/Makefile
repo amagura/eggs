@@ -79,4 +79,4 @@ doc:
 	#  for _f in $(DOCS); do asciidoc --theme volnitsky "$$_f"; done
 
 % : %.c
-	$(CC) $(CFLAGS) -g $(LDFLAGS) -lreadline -o $@ $<
+	$(CC) $(CFLAGS) -ggdb -g $(LDFLAGS) -lreadline -o $@ $<
