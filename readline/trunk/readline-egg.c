@@ -3,7 +3,7 @@
 //
 // Copyright (c) 2002 Tony Garnock-Jones
 // Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
-// Copyright (c) 2015 Alexej Magura (added a lot of history functions and more)
+// Copyright (c) 2015 Alexej Magura (better prompt selection, history functions)
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,32 +27,50 @@
 #include <readline/history.h>
 #include <stdbool.h>
 
-#if _HAVE_LIBBSD // then we can use strlcat and strlcpy
+/**
+  Macros - BEGIN **/
+/***
+  Conditional Macros ***/
+#ifndef INLINE
+#if defined __GNUC__
+#define INLINE __inline__
+#else
+#define INLINE inline
+#endif
+#endif
+
+#ifndef DEBUG
+#define DEBUG 1
+#endif
+
+#if DEBUG /* NOTE change this to 1 to enable debug messages */
+#define RL_EGG_BEGIN_TRACE fprintf(stderr, "++ %s{%d}:\n\n", __FILE__, __LINE__)
+#define RL_EGG_END_TRACE fprintf(stderr, "\n-- %s %s `%s'\n\n", "In", "function", __FUNCTION__)
+#define RL_EGG_DEBUG(format, ...) \
+  do { \
+    fprintf(stderr, "%s", "\e[36m"); \
+    fprintf(stderr, (format), (__VA_ARGS__)); \
+    fprintf(stderr, "%s", "\e[0m"); \
+  } while(0)
+#else
+#define RL_EGG_BEGIN_TRACE
+#define RL_EGG_END_TRACE
+#define RL_EGG_DEBUG(format, ...)
+#endif
+
+#if _HAVE_LIBBSD /* then we can use strlcat */
 #include <bsd/string.h>
-#define _CHK_READLINE_EGG_STRCAT(dst_str, src_str) strlcat((dst_str), (src_str), sizeof (dst_str))
-//#define _CHK_READLINE_EGG_STRCPY(dst_str, src_str) strlcpy(dst_str, src_str, sizeof dst_str)
-#define _CHK_READLINE_EGG_STRCPY(dst_str, src_str) _CHK_READLINE_EGG_STRCAT(dst_str, src_str)
-
-#define _CHK_READLINE_EGG_STRCAT_FN_USED "strlcat"
-#define _CHK_READLINE_EGG_STRCPY_FN_USED _CHK_READLINE_EGG_STRCAT_FN_USED
-#else
-#define _CHK_READLINE_EGG_STRCAT(dst_str, src_str) strncat(dst_str, src_str, (sizeof dst_str - strlen(dst_str) - 1))
-#define _CHK_READLINE_EGG_STRCPY(dst_str, src_str) _CHK_READLINE_EGG_STRCAT(dst_str, src_str)
-
-#define _CHK_READLINE_EGG_STRCAT_FN_USED "strncat"
-#define _CHK_READLINE_EGG_STRCPY_FN_USED _CHK_READLINE_EGG_STRCAT_FN_USED
+#define RL_EGG_STRCAT(DESTINATION_STR, SOURCE_STR) \
+  strlcat((DESTINATION_STR), (SOURCE_STR), sizeof (DESTINATION_STR))
+#else /* else we have to use strncat */
+#define RL_EGG_STRCAT(DESTINATION_STR, SOURCE_STR) \
+  strncat((DESTINATION_STR), (SOURCE_STR), (sizeof (DESTINATION_STR) - strlen((DESTINATION_STR)) - 1))
 #endif
+/**
+  Macros - END **/
 
-/*@ignore@*/
-#if 0 // NOTE change this to 1 to enable debug messages
-#define _CHK_READLINE_EGG_DEBUG(format, ...) fprintf(stderr, format, __VA_ARGS__)
-#define _CHK_READLINE_EGG_DEBUG_LIT(format, ...) fprintf(stderr, format, #__VA_ARGS__)
-#else
-#define _CHK_READLINE_EGG_DEBUG(format, ...)
-#define _CHK_READLINE_EGG_DEBUG_LIT(format, ...)
-#endif
-/*@end@*/
-
+/**
+  Globals - BEGIN **/
 struct balance_t {
   int paren[3]; // 0 -> total, 1 -> open, 2 -> close
   int brace[3]; // 0 -> total, 1 -> open, 2 -> close
@@ -72,25 +90,12 @@ static struct gnu_readline_current_paren_color_t {
 #endif
 
 /* XXX readline already provides paren-bouncing:
-   (gnu-readline-parse-and-bind "set blink-matching-paren on")
-
-   XXX it however does ____NOT____ work.  built-in: (line 'a) ')
-                                                    ^ -------- ^ ; WRONG
-   ~ Alexej
-*/
-// >>>1
-inline void * // returns the memory address of the tail of a string (i.e. the offset just before the null-terminator)
-strtail_addr(char *string)
-{
-  return &string[strlen(string) - 1];
-}
-
-inline void * // returns the memory address of the null-terminator within a string
-strend_addr(char *string)
-{
-  return &string[strlen(string)];
-}
-
+ *  (gnu-readline-parse-and-bind "set blink-matching-paren on")
+ *
+ *  XXX it however does ____NOT____ work.  built-in: (line 'a) ')
+ *                                                   ^ -------- ^ ; WRONG
+ *  ~ Alexej
+ */
 inline char // returns the character preceding the character referenced by the memory address `stringp'
 prev_char(char *stringp, char *string)
 {
@@ -136,7 +141,7 @@ quote_in_string(char *string)
 
   if (balance.quote == 0)
     return -1;
-  _CHK_READLINE_EGG_DEBUG("return balance.quote: %d\n", balance.quote);
+  RL_EGG_DEBUG("return balance.quote: %d\n", balance.quote);
   return balance.quote % 2;
 }
 
@@ -174,7 +179,7 @@ parens_braces_in_string(char *string, char add_token)
     if (ptr_not_strhead(str_ptr, string) && prev_char(str_ptr, string) == '\\')
       continue;
 
-    _CHK_READLINE_EGG_DEBUG("balance.quote: %d\n", balance.quote);
+    RL_EGG_DEBUG("balance.quote: %d\n", balance.quote);
     if (*str_ptr == add_token && balance.quote < 1) {
       ++(*idxp); // increment total
       ++(*(++idxp)); // move to open, and increment
@@ -196,7 +201,7 @@ highlight_paren()
 {
   char *rl_ptr = rl_line_buffer;
   while (rl_ptr != &rl_line_buffer[rl_point]) { ++rl_ptr; }
-  _CHK_READLINE_EGG_DEBUG("%s\n", rl_ptr);
+  RL_EGG_DEBUG("%s\n", rl_ptr);
   return 0;
 }
 #endif
@@ -230,10 +235,10 @@ gnu_readline_find_match(char key)
     return gnu_readline_skip(rl_point - 1, '(', ')');
   else if (key == ']')
     return gnu_readline_skip(rl_point - 1, '[', ']');
-  return 0; 
+  return 0;
 }
 
-// Delays, but returns early if key press occurs 
+// Delays, but returns early if key press occurs
 inline void
 gnu_readline_timid_delay(int ms)
 {
@@ -357,7 +362,7 @@ gnu_readline_append_history(char *filename)
 #if 0
 void gnu_readline_highlight_matches()
 {
-  _CHK_READLINE_EGG_DEBUG("match-position: %d\n", find_match(')'));
+  RL_EGG_DEBUG("match-position: %d\n", find_match(')'));
 }
 #endif
 #if 0
@@ -394,7 +399,7 @@ gnu_readline_readline(char *prompt, char *prompt2)
     free(gnu_readline_buf);
     gnu_readline_buf = NULL;
   }
-  
+
   if (!(balance.quote || balance.paren[0] || balance.brace[0]))
     gnu_readline_buf = readline(prompt);
   else
@@ -410,7 +415,7 @@ gnu_readline_readline(char *prompt, char *prompt2)
 
   if (strlen(rl_line_buffer) > 0) {
     int adx = quote_in_string(rl_line_buffer);
-    _CHK_READLINE_EGG_DEBUG("quote_in_string: %d\n", adx);
+    RL_EGG_DEBUG("quote_in_string: %d\n", adx);
     int bdx = parens_braces_in_string(rl_line_buffer, '(');
     int cdx = parens_braces_in_string(rl_line_buffer, '[');
     balance.quote = (adx == -1 ? 0 : adx);
@@ -436,7 +441,7 @@ char *
 gnu_history_get(int ind, int time)
 {
   HIST_ENTRY *entry = NULL;
-  
+
   entry = history_get(ind);
 
   if (entry == NULL)
@@ -474,14 +479,14 @@ gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
 
   if (hist_list == NULL)
     return NULL;
-  _CHK_READLINE_EGG_DEBUG("_CHK_READLINE_EGG_STRCPY: %s\n", _CHK_READLINE_EGG_STRCPY_FN_USED);
-  _CHK_READLINE_EGG_DEBUG("_CHK_READLINE_EGG_STRCAT: %s\n", _CHK_READLINE_EGG_STRCAT_FN_USED);
-  _CHK_READLINE_EGG_STRCPY(result_buf, hist_list[0]->line);
-  _CHK_READLINE_EGG_STRCAT(result_buf, "\n");
+  RL_EGG_DEBUG("RL_EGG_STRCPY: %s\n", RL_EGG_STRCPY_FN_USED);
+  RL_EGG_DEBUG("RL_EGG_STRCAT: %s\n", RL_EGG_STRCAT_FN_USED);
+  RL_EGG_STRCPY(result_buf, hist_list[0]->line);
+  RL_EGG_STRCAT(result_buf, "\n");
 
   for (idx = 1; idx < history_length; ++idx) {
-    _CHK_READLINE_EGG_STRCAT(result_buf, hist_list[idx]->line);
-    _CHK_READLINE_EGG_STRCAT(result_buf, "\n");
+    RL_EGG_STRCAT(result_buf, hist_list[idx]->line);
+    RL_EGG_STRCAT(result_buf, "\n");
   }
   return result_buf_ptr;
 }
