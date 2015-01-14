@@ -76,6 +76,12 @@ struct delim_count {
   int close;
 };
 
+struct balance {
+  int paren[3];
+  int brace[3];
+  int quote;
+} balance;
+
 static int gnu_readline_bounce_ms = 500; // FIXME I'm a global variable... I think.
 static int gnu_history_newlines = 0; // FIXME I'm a global
 static char *gnu_readline_buf = NULL; // FIXME I'm a global
@@ -429,12 +435,6 @@ gnu_readline_readline(char *prompt, char *prompt2)
 {
   char *empty_prompt;
   int prompt_len;
-  struct balanced {
-    int paren;
-    int brace;
-    int quote;
-  };
-  static struct balanced balncd = {0, 0, 0};
   struct delim_count *count;
   HIST_ENTRY *entry;
 
@@ -443,7 +443,7 @@ gnu_readline_readline(char *prompt, char *prompt2)
     gnu_readline_buf = NULL;
   }
 
-  if (!(balncd.paren || balncd.brace || balncd.quote))
+  if (!(balance.quote || balance.paren[0] || balance.brace[0]))
     gnu_readline_buf = readline(prompt);
   else
     gnu_readline_buf = readline(prompt2);
@@ -456,6 +456,16 @@ gnu_readline_readline(char *prompt, char *prompt2)
     }
   }
 
+  if (strlen(rl_line_buffer) > 0) {
+    int adx = strnof_delim(rl_line_buffer, '"', '"',
+    int bdx = parens_braces_in_string(rl_line_buffer, '(');
+    int cdx = parens_braces_in_string(rl_line_buffer, '[');
+    balance.quote = (adx == -1 ? 0 : adx);
+    if (bdx == -1)
+      clear_paren_brace_counts('(');
+    if (cdx == -1)
+      clear_paren_brace_counts('[');
+  }
   if (strlen(rl_line_buffer) > 0) {
     char *rl_buf = str_nquotd(rl_line_buffer);
     count = strnof_delim(rl_buf, '(', ')', NULL);
