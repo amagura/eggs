@@ -3,7 +3,7 @@
 //
 // Copyright (c) 2002 Tony Garnock-Jones
 // Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
-// Copyright (c) 2015 Alexej Magura (added better prompt selection, ...)
+// Copyright (c) 2015 Alexej Magura (better prompt selection, history functions)
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -290,8 +290,9 @@ gnu_readline_tab_complete(const char *text, int status) {
 
   // Copy (note: the readline lib frees this copy)
   copied_str = (char *)malloc(len + 1);
-  strncpy(copied_str, str, len); /* XXX this probably isn't the best, although it is safe
-                                    thanks to the next line, way to copy these strings. */
+  strncpy(copied_str, str, len);
+  /* XXX this probably isn't the best, although it is safe
+     thanks to the next line, way to copy these strings. */
   copied_str[len] = '\0';
   return copied_str;
 }
