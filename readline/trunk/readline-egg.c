@@ -46,7 +46,7 @@
 #if DEBUG /* NOTE change this to 1 to enable debug messages */
 #define RL_EGG_TRACE(format, ...) \
   do { \
-    fprintf(stderr, "++ %s(%d):\n", __FILE__, __LINE__); \
+    fprintf(stderr, "++ %s(%d):\n\n", __FILE__, __LINE__); \
     fprintf(stderr, (format), (__VA_ARGS__)); \
     fprintf(stderr, "\n-- %s %s `%s'\n\n", "In", "function", __FUNCTION__); \
   } while(0)
@@ -114,17 +114,16 @@ peek_chr(char *cp, char *stringp, bool direct)
   }
 }
 
-INLINE int *
+INLINE int * /* when `idx' is NULL, call `free' on the returned pointer */
 strnof_delim(char *str, const char open_delim, const char close_delim, int *idx)
 {
   char *cp = &str[strlen(str)];
 
-  if (idx == NULL) {
-    int kdx[2];
-    idx = kdx;
-  }
   if (cp == str)
     return NULL;
+
+  if (idx == NULL)
+    idx = calloc(2, sizeof(int));
 
   do {
     if (cp != str && peek_chr(cp, str, false) == '\\')
@@ -139,10 +138,10 @@ strnof_delim(char *str, const char open_delim, const char close_delim, int *idx)
   RL_EGG_DEBUG("open: %d\nclose:%d\n", idx[0], idx[1]);
 
   if (open_delim == close_delim && idx[1] > 0) {
-    if (idx[0] % 2 == 1)
+    if (idx[1] % 2 == 1)
       while(idx[0]++ < --idx[1]);
     else
-      idx[1]%= 2;
+      idx[1] %= 2;
   }
   RL_EGG_DEBUG("open: %d\nclose:%d\n", idx[0], idx[1]);
 
