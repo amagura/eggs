@@ -12,6 +12,7 @@ LINT = -nullassign -immediatetrans +trytorecover +gnuextensions +posixlib
 CHK_CC := /usr/bin/chicken-install
 version := $$(grep version "$(mydir)/../trunk/readline.setup" | grep -P '[0-9.]+' -o)
 
+.PHONY: build kill
 all: kill build
 
 valgrind:
@@ -24,7 +25,6 @@ lint:
 build:
 	cd $(mydir)/../trunk; \
 	  sudo $(CHK_CC) -trunk
-	  touch build
 
 kill:
 	killall -9 csi || true

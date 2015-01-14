@@ -9,30 +9,6 @@ struct balnce {
   int brace;
 } bal;
 
-INLINE void
-str_balncd_paren(char *str, int *paren_open_count)
-{
-  char *new_str = str_nquotd(str);
-  struct delim_count *count;
-  int close, open;
-
-  if (*paren_open_count < 1) {
-    count = strnof_delim(new_str, '(', ')', NULL);
-    open = count->open;
-    close = count->close;
-    free(count);
-  } else {
-    struct delim_count tmp;
-    tmp.open = *paren_open_count;
-    count = strnof_delim(new_str, '(', ')', &tmp);
-    open = count->open;
-    close = count->close;
-  }
-
-  RL_EGG_DEBUG("%d\n", open);
-  *paren_open_count = abs(open - close);
-}
-
 int main(void) {
   char *str = "(hello";
   char *_str = ":";

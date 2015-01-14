@@ -32,7 +32,7 @@
 /***
   Conditional Macros ***/
 #ifndef INLINE
-#ifdef __GNUC__
+#if defined __GNUC__
 #define INLINE __inline__
 #else
 #define INLINE inline
@@ -44,7 +44,7 @@
 #endif
 
 #if DEBUG /* NOTE change this to 1 to enable debug messages */
-#define RL_EGG_BEGIN_TRACE fprintf(stderr, "++ %s(%d):\n\n", __FILE__, __LINE__)
+#define RL_EGG_BEGIN_TRACE fprintf(stderr, "++ %s{%d}:\n\n", __FILE__, __LINE__)
 #define RL_EGG_END_TRACE fprintf(stderr, "\n-- %s %s `%s'\n\n", "In", "function", __FUNCTION__)
 #define RL_EGG_DEBUG(format, ...) \
   do { \
@@ -77,8 +77,8 @@ struct delim_count {
 };
 
 struct balance {
-  int paren[3];
-  int brace[3];
+  int paren;
+  int brace;
   int quote;
 } balance;
 
@@ -146,57 +146,87 @@ peek_chr(char *cp, char *stringp, bool direct)
   }
 }
 
-INLINE struct delim_count * /* when `idx' is NULL, call `free' on the returned pointer */
-strnof_delim(char *str, const char open_delim, const char close_delim, struct delim_count *preset)
+INLINE int
+strnof_chr(char *str, const char chr)
 {
   char *cp = &str[strlen(str)];
+  int count = 0;
+
+  if (cp == str)
+    return -1;
+
+  do {
+    if (cp != str && peek_chr(cp, str, false) == '\\')
+      continue;
+
+    if (*cp == chr)
+      ++count;
+
+  } while(cp-- != str);
+  return count;
+}
+
+#if 0
+INLINE int *
+strnof_delim(char *str, const char open_delim, const char close_delim, int *open, int *close)
+{
+  char *cp = &str[strlen(str)];
+  int *result = calloc(2, sizeof(int));
+  bool need_free = false;
 
   if (cp == str)
     return NULL;
 
-  if (preset == NULL) {
-    preset = malloc(sizeof(preset));
-    *preset = (const struct delim_count){0};
+  if (open)
+    result = open;
+  else
+    *result = 0;
+
+  if (!close) {
+    need_free = true;
+    close = calloc(1, sizeof(int));
   }
+
 
   do {
     if (cp != str && peek_chr(cp, str, false) == '\\')
       continue;
 
     if (*cp == close_delim)
-      ++preset->close;
+      ++(*close);
     else if (*cp == open_delim)
-      ++preset->open;
+      ++(*open);
   } while(cp-- != str);
 
-  if (open_delim == close_delim && preset->close > 0) {
-    if (preset->close % 2 == 1)
-      while(preset->open++ < --preset->close);
+  if (open_delim == close_delim && *close > 0) {
+    if (*close % 2 == 1)
+      while((*open)++ < --(*close));
     else {
-      preset->open = preset->close * .5;
-      preset->close *= .5;
+      *open = *close * 0.5;
     }
   }
 
   RL_EGG_BEGIN_TRACE;
-  RL_EGG_DEBUG("preset->open: %d\npreset->close: %d\n", preset->open, preset->close);
+  RL_EGG_DEBUG("open: %d\nclose: %d\n", open, (*close * 0.5));
   RL_EGG_END_TRACE;
 
-  return preset;
+  if (need_free)
+    free(close);
+
+  return *result;
 }
+#endif
 
 char * // returns the substring of `str' that is not quoted
 str_nquotd(char *str)
 {
-  struct delim_count *count = strnof_delim(str, '"', '"', NULL);
-  RL_EGG_DEBUG("idx[0]: %d\n", count->open);
-  RL_EGG_DEBUG("idx[1]: %d\n", count->close);
+  int open = strnof_delim(str, '"', '"', NULL);
+  RL_EGG_DEBUG("idx[0]: %d\n", open);
 
-  if (count->open == 0) {
-    free(count);
+  if (open == 0) {
     return str;
   }
-  int even = count->open - abs(count->open - count->close);
+  int even = open - abs(count->open - count->close);
   free(count);
 
   char *token, *rest, *tmp, *result;
@@ -235,6 +265,30 @@ str_nquotd(char *str)
   return result;
 }
 
+INLINE void
+str_balncd_paren(char *str, int *paren_open_count)
+{
+  char *new_str = str_nquotd(str);
+  struct delim_count *count;
+  int close, open;
+
+  if (*paren_open_count < 1) {
+    count = strnof_delim(new_str, '(', ')', NULL);
+    open = count->open;
+    close = count->close;
+    free(count);
+  } else {
+    struct delim_count tmp;
+    tmp.open = *paren_open_count;
+    count = strnof_delim(new_str, '(', ')', &tmp);
+    open = count->open;
+    close = count->close;
+  }
+
+  RL_EGG_DEBUG("open: %d\nclose: %d\n", open, close);
+  RL_EGG_DEBUG("diff: %d\n", open - close);
+  *paren_open_count = abs(open - close);
+}
 
 #if 0 // NOT YET IMPLEMENTED
 int
@@ -436,6 +490,9 @@ gnu_readline_readline(char *prompt, char *prompt2)
   char *empty_prompt;
   int prompt_len;
   struct delim_count *count;
+  static int paren = 0;
+  static int brace = 0;
+  static int quote = 0;
   HIST_ENTRY *entry;
 
   if (gnu_readline_buf != NULL) {
@@ -443,7 +500,7 @@ gnu_readline_readline(char *prompt, char *prompt2)
     gnu_readline_buf = NULL;
   }
 
-  if (!(balance.quote || balance.paren[0] || balance.brace[0]))
+  if (!(quote || paren || brace))
     gnu_readline_buf = readline(prompt);
   else
     gnu_readline_buf = readline(prompt2);
@@ -457,44 +514,9 @@ gnu_readline_readline(char *prompt, char *prompt2)
   }
 
   if (strlen(rl_line_buffer) > 0) {
-    int adx = strnof_delim(rl_line_buffer, '"', '"',
-    int bdx = parens_braces_in_string(rl_line_buffer, '(');
-    int cdx = parens_braces_in_string(rl_line_buffer, '[');
-    balance.quote = (adx == -1 ? 0 : adx);
-    if (bdx == -1)
-      clear_paren_brace_counts('(');
-    if (cdx == -1)
-      clear_paren_brace_counts('[');
-  }
-  if (strlen(rl_line_buffer) > 0) {
     char *rl_buf = str_nquotd(rl_line_buffer);
-    count = strnof_delim(rl_buf, '(', ')', NULL);
-    if (count->open < count->close) {
-      balncd.paren -= count->close;
-    }
-    idx = strnof_delim(rl_buf, '(', ')', ptr_or_null(balncd));
-    RL_EGG_DEBUG("readline: idx[0]: %d\nidx[1]: %d\n", idx[0], idx[1]);
-    free_when_null(ptr_or_null(balncd), idx);
-    if (!(bool)abs(idx[0] - idx[1])) {
-      balncd[0] = idx[0];
-      balncd[1] = idx[1];
-      goto end;
-    }
-    jdx = strnof_delim(rl_buf, '[', ']', ptr_or_null(balncd));
-    if (!(bool)abs(jdx[0] - jdx[1])) {
-      balncd[0] = jdx[0];
-      balncd[1] = jdx[1];
-      free_when_null(ptr_or_null(balncd), jdx);
-      goto end;
-    }
-    kdx = strnof_delim(rl_line_buffer, '"', '"', ptr_or_null(balncd));
-    if (!(bool)abs(kdx[0] - kdx[1])) {
-      balncd[0] = kdx[0];
-      balncd[1] = kdx[1];
-      free_when_null(ptr_or_null(balncd), kdx);
-    }
+    str_balncd_paren(rl_buf, &paren);
   }
-end:
   return (gnu_readline_buf);
 }
 #endif
