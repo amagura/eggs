@@ -40,7 +40,7 @@
 #endif
 
 #ifndef DEBUG
-#define DEBUG 1
+#define DEBUG 0
 #endif
 
 #if DEBUG /* NOTE change this to 1 to enable debug messages */
@@ -62,9 +62,11 @@
 #include <bsd/string.h>
 #define RL_EGG_STRCAT(DESTINATION_STR, SOURCE_STR) \
   strlcat((DESTINATION_STR), (SOURCE_STR), sizeof (DESTINATION_STR))
+#define RL_EGG_STRCAT_FN_USED "strlcat"
 #else /* else we have to use strncat */
 #define RL_EGG_STRCAT(DESTINATION_STR, SOURCE_STR) \
   strncat((DESTINATION_STR), (SOURCE_STR), (sizeof (DESTINATION_STR) - strlen((DESTINATION_STR)) - 1))
+#define RL_EGG_STRCAT_FN_USED "strncat"
 #endif
 /**
   Macros - END **/
@@ -606,9 +608,8 @@ gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
 
   if (hist_list == NULL)
     return NULL;
-  RL_EGG_DEBUG("RL_EGG_STRCPY: %s\n", RL_EGG_STRCPY_FN_USED);
   RL_EGG_DEBUG("RL_EGG_STRCAT: %s\n", RL_EGG_STRCAT_FN_USED);
-  RL_EGG_STRCPY(result_buf, hist_list[0]->line);
+  RL_EGG_STRCAT(result_buf, hist_list[0]->line);
   RL_EGG_STRCAT(result_buf, "\n");
 
   for (idx = 1; idx < history_length; ++idx) {
