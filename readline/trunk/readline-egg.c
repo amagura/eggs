@@ -160,6 +160,56 @@ strnof_delim(char *str, const char open_delim, const char close_delim, int *idx)
   return idx;
 }
 
+char *
+str_nquotd(char *str)
+{
+  int *idx = strnof_delim(str, '"', '"', NULL);
+  RL_EGG_DEBUG("idx[0]: %d\n", idx[0]);
+  RL_EGG_DEBUG("idx[1]: %d\n", idx[1]);
+
+  if (idx[0] == 0) {
+    free(idx);
+    return str;
+  }
+  int even = idx[0] - abs(idx[0] - idx[1]);
+  free(idx);
+
+  char *token, *rest, *tmp, *result;
+  tmp = NULL;
+  char str_slice[BUFSIZ]; // FIXME would like to use malloc, but can't seem to allocate enough memory to fit everything...
+
+  result = str_slice;
+  tmp = strdup(str);
+
+  if (tmp == NULL) {
+    perror(__FUNCTION__);
+    return str;
+  }
+
+  token = strtok_r(tmp, "\"", &rest);
+  RL_EGG_DEBUG("token: %s\n", token);
+  RL_EGG_STRCAT(str_slice, token);
+
+  bool need_free = true;
+
+  while ((token = strtok_r(NULL, "\"", &rest)) != NULL) {
+    RL_EGG_DEBUG("token (while): %s\n", token);
+    RL_EGG_DEBUG("even (while): %d\n", even);
+    if (even % 2 == 1) {
+      RL_EGG_STRCAT(str_slice, token);
+      --even;
+    } else {
+      ++even;
+    }
+    if (need_free) {
+      free(tmp);
+      need_free = false;
+    }
+    tmp = rest;
+  }
+  return result;
+}
+
 #if 0 // NOT YET IMPLEMENTED
 int
 highlight_paren()
