@@ -179,7 +179,7 @@ strnof_delim(char *str, const char open_delim, const char close_delim, struct de
   return preset;
 }
 
-char *
+char * // returns the substring of `str' that is not quoted
 str_nquotd(char *str)
 {
   struct delim_count *count = strnof_delim(str, '"', '"', NULL);
