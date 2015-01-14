@@ -62,31 +62,28 @@
 #include <bsd/string.h>
 #define RL_EGG_STRCAT(DESTINATION_STR, SOURCE_STR) \
   strlcat((DESTINATION_STR), (SOURCE_STR), sizeof (DESTINATION_STR))
+#define RL_EGG_STRCAT_FN_USED "strlcat"
 #else /* else we have to use strncat */
 #define RL_EGG_STRCAT(DESTINATION_STR, SOURCE_STR) \
   strncat((DESTINATION_STR), (SOURCE_STR), (sizeof (DESTINATION_STR) - strlen((DESTINATION_STR)) - 1))
+#define RL_EGG_STRCAT_FN_USED "strncat"
 #endif
 /**
   Macros - END **/
 
 /**
   Globals - BEGIN **/
-struct delim_count {
-  int open;
-  int close;
-};
-
-struct balance {
-  int paren;
-  int brace;
+struct balance_t {
+  int paren[3]; // 0 -> total, 1 -> open, 2 -> close
+  int brace[3]; // 0 -> total, 1 -> open, 2 -> close
   int quote;
 } balance;
 
-static int gnu_readline_bounce_ms = 500; // FIXME I'm a global variable... I think.
-static int gnu_history_newlines = 0; // FIXME I'm a global
-static char *gnu_readline_buf = NULL; // FIXME I'm a global
+static int gnu_readline_bounce_ms = 500;
+static int gnu_history_newlines = 0;
+static char *gnu_readline_buf = NULL;
 
-#if 0 /* NOT YET IMPLEMENTED */
+#if 0 // NOT YET IMPLEMENTED
 static struct gnu_readline_current_paren_color_t {
   int enabled;
   char *with_match;
@@ -204,7 +201,7 @@ strnof_delim(char *str, const char open_delim, const char close_delim, int *coun
   return idxp;
 }
 
-char * // returns the substring of `str' that is not quoted
+INLINE char * // returns the substring of `str' that is not quoted
 str_nquotd(char *str)
 {
   int idx[2];
@@ -253,29 +250,77 @@ str_nquotd(char *str)
   return result;
 }
 
-INLINE void
-str_balncd_paren(char *str, int *paren_open_count)
+INLINE int /* returns the _balance_ of quotes within a string */
+quote_in_string(char *str)
 {
-  char *new_str = str_nquotd(str);
-  struct delim_count *count;
-  int close, open;
+  char *cp = &str[strlen(str)];
 
-  if (*paren_open_count < 1) {
-    count = strnof_delim(new_str, '(', ')', NULL);
-    open = count->open;
-    close = count->close;
-    free(count);
-  } else {
-    struct delim_count tmp;
-    tmp.open = *paren_open_count;
-    count = strnof_delim(new_str, '(', ')', &tmp);
-    open = count->open;
-    close = count->close;
+  if (cp == str)
+    return 0;
+
+  do {
+    if (cp != str && peek_chr(cp, str, false) == '\\')
+      continue;
+
+    if (*cp == '"') {
+      ++balance.quote;
+    }
+  } while (cp-- != str);
+
+  if (balance.quote == 0)
+    return -1;
+  RL_EGG_DEBUG("return balance.quote: %d\n", balance.quote);
+  return balance.quote % 2;
+}
+
+INLINE void
+clear_paren_brace_counts(char token)
+{
+  int idx = 0;
+  for (; idx < 3; ++idx) {
+    if (token == '(' || token == ')')
+      balance.paren[idx] = 0;
+    if (token == '[' || token == ']')
+      balance.brace[idx] = 0;
+  }
+}
+
+INLINE int /* returns the total number of parens or braces in a string */
+parens_braces_in_string(char *str, char add_token)
+{
+  int *idxp = NULL;
+  char sub_token = '\0';
+  if (add_token == '(') {
+    idxp = balance.paren;
+    sub_token = ')';
+  } else if (add_token == '[') {
+    idxp = balance.brace;
+    sub_token = ']';
   }
 
-  RL_EGG_DEBUG("open: %d\nclose: %d\n", open, close);
-  RL_EGG_DEBUG("diff: %d\n", open - close);
-  *paren_open_count = abs(open - close);
+  char *cp = &str[strlen(str)];
+
+  if (cp == str)
+    return 0;
+
+  do {
+    if (cp != str && peek_chr(cp, str, false) == '\\')
+      continue;
+
+    RL_EGG_DEBUG("balance.quote: %d\n", balance.quote);
+    if (*cp == add_token && balance.quote < 1) {
+      ++(*idxp); // increment total
+      ++(*(++idxp)); // move to open, and increment
+      --idxp; // move back to total
+    } else if (*cp == sub_token && balance.quote < 1) {
+      --(*idxp); // deincrement total
+      ++idxp; // move to open
+      ++(*(++idxp)); // move to close and increment
+      --idxp; // move back to open
+      --idxp; // move back to total
+    }
+  } while (cp-- != str);
+  return *idxp;
 }
 
 #if 0 // NOT YET IMPLEMENTED
@@ -284,7 +329,7 @@ highlight_paren()
 {
   char *rl_ptr = rl_line_buffer;
   while (rl_ptr != &rl_line_buffer[rl_point]) { ++rl_ptr; }
-  _CHKSCM_RL_EGG_DEBUG("%s\n", rl_ptr);
+  RL_EGG_DEBUG("%s\n", rl_ptr);
   return 0;
 }
 #endif
@@ -293,10 +338,8 @@ highlight_paren()
 
 /* Returns: (if positive) the position of the matching paren
             (if negative) the number of unmatched closing parens */
-
-// Finds the matching paren (starting from just left of the cursor)
 INLINE int
-gnu_readline_skip(int pos, const char open_key, const char close_key)
+gnu_readline_skip(int pos, char open_key, char close_key)
 {
   while (--pos > -1) {
     if (pos > 0 && rl_line_buffer[pos - 1] == '\\')
@@ -311,6 +354,7 @@ gnu_readline_skip(int pos, const char open_key, const char close_key)
   return pos;
 }
 
+// Finds the matching paren (starting from just left of the cursor)
 INLINE int
 gnu_readline_find_match(char key)
 {
@@ -321,11 +365,8 @@ gnu_readline_find_match(char key)
   return 0;
 }
 
-/**
-  Inline Functions - END **/
-
 // Delays, but returns early if key press occurs
-void
+INLINE void
 gnu_readline_timid_delay(int ms)
 {
   struct pollfd pfd;
@@ -336,6 +377,8 @@ gnu_readline_timid_delay(int ms)
 
   poll(&pfd, 1, ms);
 }
+/**
+  Inline Functions - END **/
 
 // Bounces the cursor to the matching paren for a while
 int
@@ -422,9 +465,8 @@ gnu_readline_tab_complete(const char *text, int status) {
 
   // Copy (note: the readline lib frees this copy)
   copied_str = (char *)malloc(len + 1);
-  strncpy(copied_str, str, len);
-  /* XXX this probably isn't the best, although it is safe
-     thanks to the next line, way to copy these strings. */
+  strncpy(copied_str, str, len); /* XXX this probably isn't the best, although it is safe
+                                    thanks to the next line, way to copy these strings. */
   copied_str[len] = '\0';
   return copied_str;
 }
@@ -477,10 +519,6 @@ gnu_readline_readline(char *prompt, char *prompt2)
 {
   char *empty_prompt;
   int prompt_len;
-  struct delim_count *count;
-  static int paren = 0;
-  static int brace = 0;
-  static int quote = 0;
   HIST_ENTRY *entry;
 
   if (gnu_readline_buf != NULL) {
@@ -488,7 +526,7 @@ gnu_readline_readline(char *prompt, char *prompt2)
     gnu_readline_buf = NULL;
   }
 
-  if (!(quote || paren || brace))
+  if (!(balance.quote || balance.paren[0] || balance.brace[0]))
     gnu_readline_buf = readline(prompt);
   else
     gnu_readline_buf = readline(prompt2);
@@ -502,8 +540,15 @@ gnu_readline_readline(char *prompt, char *prompt2)
   }
 
   if (strlen(rl_line_buffer) > 0) {
-    char *rl_buf = str_nquotd(rl_line_buffer);
-    str_balncd_paren(rl_buf, &paren);
+    int adx = quote_in_string(rl_line_buffer);
+    RL_EGG_DEBUG("quote_in_string: %d\n", adx);
+    int bdx = parens_braces_in_string(rl_line_buffer, '(');
+    int cdx = parens_braces_in_string(rl_line_buffer, '[');
+    balance.quote = (adx == -1 ? 0 : adx);
+    if (bdx == -1)
+      clear_paren_brace_counts('(');
+    if (cdx == -1)
+      clear_paren_brace_counts('[');
   }
   return (gnu_readline_buf);
 }
@@ -512,6 +557,7 @@ gnu_readline_readline(char *prompt, char *prompt2)
 void
 gnu_readline_signal_cleanup()
 {
+  balance.quote = 0;
   free(gnu_readline_buf);
   gnu_readline_buf = NULL;
   rl_free_line_state();
@@ -560,6 +606,7 @@ gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
 
   if (hist_list == NULL)
     return NULL;
+  RL_EGG_DEBUG("RL_EGG_STRCAT: %s\n", RL_EGG_STRCAT_FN_USED);
   RL_EGG_STRCAT(result_buf, hist_list[0]->line);
   RL_EGG_STRCAT(result_buf, "\n");
 
