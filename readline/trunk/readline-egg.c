@@ -166,68 +166,56 @@ strnof_chr(char *str, const char chr)
   return count;
 }
 
-#if 0
 INLINE int *
-strnof_delim(char *str, const char open_delim, const char close_delim, int *open, int *close)
+strnof_delim(char *str, const char open_delim, const char close_delim, int *count)
 {
   char *cp = &str[strlen(str)];
-  int *result = calloc(2, sizeof(int));
-  bool need_free = false;
+  int *idxp = count;
 
   if (cp == str)
     return NULL;
-
-  if (open)
-    result = open;
-  else
-    *result = 0;
-
-  if (!close) {
-    need_free = true;
-    close = calloc(1, sizeof(int));
-  }
-
 
   do {
     if (cp != str && peek_chr(cp, str, false) == '\\')
       continue;
 
-    if (*cp == close_delim)
-      ++(*close);
-    else if (*cp == open_delim)
-      ++(*open);
+    if (*cp == close_delim) {
+      ++idxp; // goto close
+      ++(*idxp); // increment
+      --idxp; // goto open
+    } else if (*cp == open_delim) {
+      ++(*idxp); // increment
+    }
   } while(cp-- != str);
 
-  if (open_delim == close_delim && *close > 0) {
-    if (*close % 2 == 1)
-      while((*open)++ < --(*close));
+  if (open_delim == close_delim && count[1] > 0) {
+    if (count[1] % 2 == 1)
+      while(count[0]++ < --count[1]);
     else {
-      *open = *close * 0.5;
+      count[0] = count[1] * 0.5;
+      count[1] *= 0.5;
     }
   }
 
   RL_EGG_BEGIN_TRACE;
-  RL_EGG_DEBUG("open: %d\nclose: %d\n", open, (*close * 0.5));
+  RL_EGG_DEBUG("open: %d\nclose: %d\n", count[0], count[1]);
   RL_EGG_END_TRACE;
 
-  if (need_free)
-    free(close);
-
-  return *result;
+  return idxp;
 }
-#endif
 
 char * // returns the substring of `str' that is not quoted
 str_nquotd(char *str)
 {
-  int open = strnof_delim(str, '"', '"', NULL);
-  RL_EGG_DEBUG("idx[0]: %d\n", open);
+  int idx[2];
+  int *hdx = strnof_delim(str, '"', '"', idx);
+  RL_EGG_DEBUG("idx[0]: %d\n", hdx[0]);
+  RL_EGG_DEBUG("idx[1]: %d\n", hdx[1]);
 
-  if (open == 0) {
+  if (hdx[0] == 0) {
     return str;
   }
-  int even = open - abs(count->open - count->close);
-  free(count);
+  int even = hdx[0] - abs(hdx[0] - hdx[1]);
 
   char *token, *rest, *tmp, *result;
   tmp = NULL;
