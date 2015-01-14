@@ -198,7 +198,7 @@ strnof_delim(char *str, const char open_delim, const char close_delim, int *coun
   }
 
   RL_EGG_BEGIN_TRACE;
-  RL_EGG_DEBUG("open: %d\nclose: %d\n", count[0], count[1]);
+  RL_EGG_DEBUG("open: %d\nclose: %d\n", *idxp, count[1]);
   RL_EGG_END_TRACE;
 
   return idxp;

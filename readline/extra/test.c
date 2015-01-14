@@ -12,14 +12,9 @@ struct balnce {
 int main(void) {
   char *str = "(hello";
   char *_str = ":";
-  struct delim_count *count = strnof_delim(str, '(', ')', NULL);
-  printf("open: %d\nclose: %d\n", count->open, count->close);
-  int diff = abs(count->open - count->close);
-  printf("diff: %d\n", diff);
-  str_balncd_paren(_str, &diff);
-  printf("diff: %d\n", diff);
-  struct delim_count *c = strnof_delim(_str, '(', ')', count);
-  printf("open: %d\nclose: %d\n", c->open, c->close);
-  free(count);
+  int idx[3];
+  int *hdx;
+  hdx = strnof_delim(str, '(', ')', idx);
+  printf("%d\n", hdx[0]);
   return 0;
 }
