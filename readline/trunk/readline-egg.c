@@ -3,7 +3,7 @@
 //
 // Copyright (c) 2002 Tony Garnock-Jones
 // Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
-// Copyright (c) 2015 Alexej Magura (added a lot of history functions and more)
+// Copyright (c) 2015 Alexej Magura (added better prompt selection, ...)
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,60 +27,36 @@
 #include <readline/history.h>
 #include <stdbool.h>
 
-#if _HAVE_LIBBSD // then we can use strlcat and strlcpy
+/** Macros - BEGIN **/
+/*** Conditional Macros ***/
+#if 1 /* NOTE change this to 1 to enable debug messages */
+#define RL_EGG_DEBUG(format, ...) fprintf(stderr, (format), (__VA_ARGS__))
+#define RL_EGG_SDOC_DEBUG(format, ...) fprintf(stderr, ((__VA_ARGS__): ## (format)), (__VA_ARGS__))
+#else
+#define RL_EGG_DEBUG(format, ...)
+#define RL_EGG_SDOC_DEBUG(format, ...)
+#endif
+
+#if _HAVE_LIBBSD /* then we can use strlcat */
 #include <bsd/string.h>
-#define _CHKSCM_RL_EGG_STRCAT(_CHKSCM_RL_EGG__DST, _CHKSCM_RL_EGG__SRC) \
-  strlcat((_CHKSCM_RL_EGG__DST), (_CHKSCM_RL_EGG__SRC), sizeof (_CHKSCM_RL_EGG__DST))
-//#define _CHKSCM_RL_EGG_STRCPY(dst_str, src_str) strlcpy(dst_str, src_str, sizeof dst_str)
-#define _CHKSCM_RL_EGG_STRCAT_FN_USED "strlcat"
-#else
-#define _CHKSCM_RL_EGG_STRCAT(_CHKSCM_RL_EGG__DST, _CHKSCM_RL_EGG__SRC) \
-  strncat((_CHKSCM_RL_EGG__DST), (_CHKSCM_RL_EGG__SRC), (sizeof (_CHKSCM_RL_EGG__DST) - strlen((_CHKSCM_RL_EGG__DST)) - 1))
-#define _CHKSCM_RL_EGG_STRCAT_FN_USED "strncat"
+#define RL_EGG_STRCAT(DESTINATION_STR, SOURCE_STR) \
+  strlcat((DESTINATION_STR), (SOURCE_STR), sizeof (DESTINATION_STR))
+#else /* else we have to use strncat */
+#define RL_EGG_STRCAT(DESTINATION_STR, SOURCE_STR) \
+  strncat((DESTINATION_STR), (SOURCE_STR), (sizeof (DESTINATION_STR) - strlen((DESTINATION_STR)) - 1))
 #endif
+/** Macros - END **/
 
-/*@ignore@*/
-#if 0 // NOTE change this to 1 to enable debug messages
-#define _CHKSCM_RL_EGG_DEBUG(format, ...) fprintf(stderr, format, __VA_ARGS__)
-#define _CHKSCM_RL_EGG_DEBUG_LIT(format, ...) fprintf(stderr, format, #__VA_ARGS__)
-#else
-#define _CHKSCM_RL_EGG_DEBUG(format, ...)
-#define _CHKSCM_RL_EGG_DEBUG_LIT(format, ...)
-#endif
-/*@end@*/
-
-struct total_t {
+struct delim_count {
   int open;
   int close;
 };
-
-struct delim_t {
-  int open;
-  int close;
-};
-
-struct key_balance_t {
-  int start_pos;
-  int end_pos;
-  int total[2]; // 0 -> open, 1 -> close
-};
-
-struct key_t {
-  struct count_t count;
-  char token[2];
-};
-
-struct balance_t {
-  struct key_t parens;
-  struct key_t braces;
-  int dbl_quotes;
-} balance;
 
 static int gnu_readline_bounce_ms = 500;
 static int gnu_history_newlines = 0;
 static char *gnu_readline_buf = NULL;
 
-#if 0 // NOT YET IMPLEMENTED
+#if 0 /* NOT YET IMPLEMENTED */
 static struct gnu_readline_current_paren_color_t {
   int enabled;
   char *with_match;
@@ -119,87 +95,39 @@ peek_chr(char *cp, char *stringp, bool direct)
   }
 }
 
-inline int // returns -1 when stringp points to a string containing only NULL
-excess_open_delim(char *stringp, const char open_delim, const char close_delim)
+inline void
+strnof_delim(char *str, const char open_delim, const char close_delim, struct delim_count count)
 {
-  int open = 0;
-  int close = 0;
-  char *cp = &stringp[strlen(stringp)];
+  char *cp = &str[strlen(str)];
 
-  if (cp == stringp)
-    return -1;
+  if (cp == str)
+  return;
 
   do {
-    if (cp != stringp && peek_chr(cp, stringp, false) == '\\')
+    if (cp != str && peek_chr(cp, str, false) == '\\')
       continue;
 
     if (*cp == close_delim)
-      ++close;
+      ++count.close;
     else if (*cp == open_delim)
-      ++open;
-  } while(cp-- != stringp);
+      ++count.open;
+  } while(cp-- != str);
 
-  if (open_delim == close_delim && close > 0) {
-    if (close % 2 == 1)
-      while(open++ < --close);
+  if (open_delim == close_delim && count.close > 0) {
+    if (count.close % 2 == 1)
+      while(count.open++ < --count.close);
     else
-      close %= 2;
+      count.close %= 2;
   }
-  return open - close;
 }
 
-inline struct key_t
-clear_key_counts(struct key_t keys)
+inline struct delim_count
+strnof_delim_nstrct(char *str, const char open_delim, const char close_delim)
 {
-  int idx = 0;
-  for (; idx < 3; ++idx) {
-    keys.counts[idx] = 0;
-  }
-  return keys;
-}
-
-inline struct balance_t
-key_balance_in_string(char *string, char open_key, char close_key)
-{
-  struct key_t keys = count_key_in_string(string, open_key, close_key);
-  keys.counts[0] =
-
-
-inline struct key_t
-count_key_in_string(char *string, char open_key, char close_key)
-{
-  struct key_t keys;
-  keys.count[0] = 0;
-  keys.count[1] = 0;
-  keys.count[2] = 0;
-  int *idxp = keys.counts;
-  char *char_ptr = strend_addr(string);
-  int dbl_quote_balance = (dbl_quotes_in_string(string) % 2);
-  keys.tokens[0] = open_key;
-  keys.tokens[1] = close_key;
-
-  if (char_ptr == string)
-    return keys;
-
-  do {
-    if (char_ptr != string && prev_char(char_ptr, string) == '\\')
-      continue;
-
-    _CHKSCM_RL_EGG_DEBUG("balance.quote: %d\n", dbl_quote_balance);
-    if (*char_ptr == open_key && dbl_quote_balance < 1) { // checks to make sure we are not in a quoted string
-      ++(*idxp); // increment total
-      ++(*(++idxp)); // move to open, and increment
-      --idxp; // move back to total
-    } else if (*char_ptr == close_key && dbl_quote_balance < 1) {
-      --(*idxp); // deincrement total
-      ++idxp; // move to open
-      ++(*(++idxp)); // move to close and increment
-      --idxp; // move back to open
-      --idxp; // move back to total
-    }
-  } while (char_ptr-- != string);
-
-  return keys;
+  struct delim_count count;
+  memset(&count, 0, sizeof(count));
+  strnof_delim(str, open_delim, close_delim, count);
+  return count;
 }
 
 #if 0 // NOT YET IMPLEMENTED
@@ -217,46 +145,24 @@ highlight_paren()
 
 /* Returns: (if positive) the position of the matching paren
             (if negative) the number of unmatched closing parens */
+
+// Finds the matching paren (starting from just left of the cursor)
 inline int
-matching_key_pos(char *key_location, const char open_key, const char close_key)
+gnu_readline_skip(int pos, const char open_key, const char close_key)
 {
-  if (pos == 0)
-    return NULL;
-
-  if (open_key == '"') {
-
-
-
-
-  do {
-    if (pos > 0 && rl_line_buffer[pos - 1] == '\\') {
-      continue;
-
-    if (rl_line_buffer[pos] == open_key && ) {
-
-
-
-
-  while (char_ptr) {
-
-  do {
-    if (
-
   while (--pos > -1) {
-    if (pos > 0 && rl_line_buffer[pos - 1] == '\\') {
+    if (pos > 0 && rl_line_buffer[pos - 1] == '\\')
       continue;
-    } else if (rl_line_buffer[pos] == open_key) {
+    else if (rl_line_buffer[pos] == open_key)
       return pos;
-    } else if (rl_line_buffer[pos] == close_key) {
-      pos = gnu_readline_skip(pos, open_key, close_key); // FIXME, I'm a recurisve call
-    } else if (rl_line_buffer[pos] == '"') {
-      pos = gnu_readline_skip(pos, '"', '"'); // FIXME, I'm a recursive call
-    }
+    else if (rl_line_buffer[pos] == close_key)
+      pos = gnu_readline_skip(pos, open_key, close_key);
+    else if (rl_line_buffer[pos] == '"')
+      pos = gnu_readline_skip(pos, '"', '"');
   }
   return pos;
 }
 
-// Finds the matching paren (starting from just left of the cursor)
 inline int
 gnu_readline_find_match(char key)
 {
@@ -334,6 +240,7 @@ void paren_match_highlights(char *match_color, char *no_match_color)
 ////\\\\//// Tab Completion ////\\\\////
 
 // Prototype for callback into scm
+#ifndef RL_EGG_TESTING
 C_word
 gnu_readline_scm_complete(char *, int, int);
 
@@ -369,14 +276,9 @@ gnu_readline_tab_complete(const char *text, int status) {
   copied_str[len] = '\0';
   return copied_str;
 }
+#endif
 
-/*  grants access to the gnu_history_newlines variable.
- *
- *  XXX using a `define-foreign-variable' to gain access to gnu_history_newlines won't work as expected.
- *  I don't _know_ this, but I suspect it's because it only grabs a snapshot of the variable and is not
- *  actually binding itself _to the variable_
- */
-int
+int // grants access to the gnu_history_newlines variable.
 gnu_history_new_lines()
 {
   return gnu_history_newlines;
@@ -391,7 +293,7 @@ gnu_readline_append_history(char *filename)
 #if 0
 void gnu_readline_highlight_matches()
 {
-  _CHKSCM_RL_EGG_DEBUG("match-position: %d\n", find_match(')'));
+  RL_EGG_DEBUG("match-position: %d\n", find_match(')'));
 }
 #endif
 #if 0
@@ -400,6 +302,7 @@ char *gnu_make_arrow_code()
 #endif
 
 // Set everything up
+#ifndef RL_EGG_TESTING
 void
 gnu_readline_init()
 {
@@ -429,7 +332,7 @@ gnu_readline_readline(char *prompt, char *prompt2)
     gnu_readline_buf = NULL;
   }
 
-  if (!(balance[0] || balance[1] || balance[2]))
+  if (0)
     gnu_readline_buf = readline(prompt);
   else
     gnu_readline_buf = readline(prompt2);
@@ -455,11 +358,11 @@ gnu_readline_readline(char *prompt, char *prompt2)
   }
   return (gnu_readline_buf);
 }
+#endif
 
 void
 gnu_readline_signal_cleanup()
 {
-  balance.quote = 0;
   free(gnu_readline_buf);
   gnu_readline_buf = NULL;
   rl_free_line_state();
@@ -508,13 +411,12 @@ gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
 
   if (hist_list == NULL)
     return NULL;
-  _CHKSCM_RL_EGG_DEBUG("_CHKSCM_RL_EGG_STRCAT: %s\n", _CHKSCM_RL_EGG_STRCAT_FN_USED);
-  _CHKSCM_RL_EGG_STRCAT(result_buf, hist_list[0]->line);
-  _CHKSCM_RL_EGG_STRCAT(result_buf, "\n");
+  RL_EGG_STRCAT(result_buf, hist_list[0]->line);
+  RL_EGG_STRCAT(result_buf, "\n");
 
   for (idx = 1; idx < history_length; ++idx) {
-    _CHKSCM_RL_EGG_STRCAT(result_buf, hist_list[idx]->line);
-    _CHKSCM_RL_EGG_STRCAT(result_buf, "\n");
+    RL_EGG_STRCAT(result_buf, hist_list[idx]->line);
+    RL_EGG_STRCAT(result_buf, "\n");
   }
   return result_buf_ptr;
 }
