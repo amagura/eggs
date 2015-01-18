@@ -3,7 +3,7 @@
 //
 // Copyright (c) 2002 Tony Garnock-Jones
 // Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
-// Copyright (c) 2015 Alexej Magura (added a lot of history functions and more)
+// Copyright (c) 2014 Alexej Magura (added a lot of history functions and more)
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
