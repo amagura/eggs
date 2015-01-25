@@ -251,7 +251,7 @@
 
  |#
 (define (%history-list)
-  (allocate
+  (allocate (%history-list-size))
   `(,@(string-split ((foreign-lambda c-string "gnu_history_list")) "\n")))
 
 ;; (gnu-history-position) -> current history position within history_list
