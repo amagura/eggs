@@ -3,11 +3,7 @@
 //
 // Copyright (c) 2002 Tony Garnock-Jones
 // Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
-<<<<<<< HEAD
-// Copyright (c) 2015 Alexej Magura (better prompt selection, history functions)
-=======
 // Copyright (c) 2014 Alexej Magura (added a lot of history functions and more)
->>>>>>> master
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -22,7 +18,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
