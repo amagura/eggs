@@ -41,25 +41,25 @@
 ; (optional) second argument to gnu-history-install-file-manager. If
 ; #f is passed in, no history-file-pruning will take place.
 ;
-; To pass configuration options to readline (see the readline manual page for 
+; To pass configuration options to readline (see the readline manual page for
 ; details):
 ;
 ; (gnu-readline-parse-and-bind "set editing-mode vi")
 ;
 ;
-; To change the "still waiting for input" prompt, just pass it as a second 
+; To change the "still waiting for input" prompt, just pass it as a second
 ; argument to make-readline-port:
 ;
 ; (current-input-port (make-gnu-readline-port "csi> " ".... "))
 ;
 ;
-; The neato line numbered display that's the csi default doesn't work, but 
+; The neato line numbered display that's the csi default doesn't work, but
 ; here's how to write a replacement:
 ;
-;(repl-prompt 
-;  (let ((history-count -1)) 
-;	(lambda () 
-;	  (set! history-count (+ 1 history-count)) 
+;(repl-prompt
+;  (let ((history-count -1))
+;	(lambda ()
+;	  (set! history-count (+ 1 history-count))
 ;	  (sprintf "#;~A> " hist))))
 
 (declare
@@ -85,7 +85,7 @@
 
     history-newlines
     history-list-length
-    history-list
+    %history-list
 
     history-get-entry
 
@@ -102,11 +102,10 @@
 
     legacy-bindings
     use-legacy-bindings
-
-    history-install-file-manager
+    install-history-file
     parse-and-bind
     completions)
-  (import scheme chicken foreign ports data-structures)
+  (import scheme chicken foreign ports data-structures lolevel)
   (use posix)
 
 #>
@@ -223,6 +222,27 @@
 (define history-list-length
   (foreign-lambda int "gnu_history_list_length"))
 
+(define history-list-max-length
+  (foreign-lambda int "gnu_history_list_max_length"))
+
+(define (history-use-timestamps yes-no)
+  ((foreign-lambda void "gnu_history_use_timestamps" boolean) yes-no))
+
+(define (%history-list-size)
+  ((foreign-lambda size_t "history_total_bytes")))
+
+(define (history-stifle #!optional max-entries)
+  (if (integer? max-entries)
+      ((foreign-lambda void "stifle_history" int) max-entries)
+      ((foreign-lambda int "unstifle_history"))))
+
+(define history-stifled?
+  (let ((return-v ((foreign-lambda int "history_is_stifled"))))
+    (or (and
+	 (= 0 return-v)
+	 (cons #f return-v))
+	(cons #t return-v))))
+
 #| the underlying c-function works, but the scheme binding to said function is buggy.
  I just can't seem to get this function to do what I want it to do. :(
  it's supposed to take a string of history entries and transform it like so:
@@ -230,7 +250,8 @@
  "a\nb\nc\nd" -> ((1 . "a") (2 . "b") (3 . "c") (4 . "d"))
 
  |#
-(define (history-list)
+(define (%history-list)
+  (allocate
   `(,@(string-split ((foreign-lambda c-string "gnu_history_list")) "\n")))
 
 ;; (gnu-history-position) -> current history position within history_list
@@ -244,7 +265,7 @@
   (foreign-lambda int "rl_parse_and_bind" c-string))
 
 ; paren-bouncing support (comes with batteries included)
-; XXX however, it doesn't work with LISP. 
+; XXX however, it doesn't work with LISP.
 ;(parse-and-bind "set blink-matching-paren on")
 
 ;; get access to the quoting flag
@@ -252,23 +273,26 @@
 (define-foreign-variable filename-completion int "rl_filename_completion_desired")
 
 ;; Handler for the command history file
-(define (history-install-file-manager filename #!optional nlines)
-  (define (hook param)
-    (param (let ((next (param)))
-            (lambda args
-              ;(gnu-readline-write-history filename)
-              (and (not (file-exists? filename))
-                   (file-close (file-open filename (+ open/append open/creat open/excl) (+ perm/irusr perm/iwusr))))
-              (%append-history filename)
-              (apply next args)))))
-  (if (pair? nlines)
-    (set! nlines (car nlines))
-    (set! nlines 1000))
-  (if nlines
-    (%truncate-history filename nlines))
-  (%read-history filename)
-  (hook exit-handler)
-  (hook implicit-exit-handler))
+(define (install-history-file #!optional filename nlines)
+  (let ((histfile (string-append
+		   (or (get-environment-variable "HOME") ".")
+		   (or filename "/.csi_history"))))
+    (define (hook param)
+      (param (let ((next (param)))
+	       (lambda args
+					;(gnu-readline-write-history filename)
+		 (and (not (file-exists? histfile))
+		      (file-close (file-open histfile (+ open/append open/creat open/excl) (+ perm/irusr perm/iwusr))))
+		 (%append-history histfile)
+		 (apply next args)))))
+    (if (pair? nlines)
+	(set! nlines (car nlines))
+	(set! nlines 1000))
+    (if nlines
+	(%truncate-history filename nlines))
+    (%read-history filename)
+    (hook exit-handler)
+    (hook implicit-exit-handler)))
 
 ;; Prompt2 is displayed when there are still open parens, this just makes a reasonable one
 (define (make-prompt2 prompt)
@@ -356,7 +380,7 @@
     ))
 
 (define (use-legacy-bindings)
-  (and (map (lambda (a) (eval a)) 
+  (and (map (lambda (a) (eval a))
             (do ((lst legacy-bindings (cdr lst))
                  (new-lst '() (append new-lst (list `(define ,(caar lst) ,(cadar lst))))))
               ((null? lst) new-lst)))
@@ -376,7 +400,7 @@
 		  (global-symbol-pointer (find-symbol-table ".")))
 	  (lambda ()
 		(let loop ()
-		  (let ((symb (enum-symbols! global-symbol-pointer 
+		  (let ((symb (enum-symbols! global-symbol-pointer
 									 global-symbol-index)))
 			(cond ((not symb)
 				   "")
@@ -388,7 +412,7 @@
 					  (if (not (substring=? "###" str))
 						str
 						(string-append (substring str 3) ":"))))))))))
-						
+
 ;; R5RS keywords (including some special forms not included in above)
 (define (create-static-ef word)
 	(let ((index -1)
@@ -398,7 +422,7 @@
 		(if (not (>= index v-len))
 		  (vector-ref static-keywords index)
 		  ""))))
-		  
+
 ;; Macros (thanks to Kon Lovett for suggesting ##sys#macro-environment)
 (define (create-macro-ef word)
   (let ((index -1))
@@ -408,7 +432,7 @@
        (set! index (+ 1 index))
        (cond ((>= index (length macro-env))
               "")
-             (else 
+             (else
                (let ((ref (list-ref macro-env index)))
                 (if (null? ref)
                   (loop)
@@ -417,7 +441,7 @@
 ;; handling filename completion
 (define (turn-on-filenames)
   (set! filename-completion 1))
-  
+
 (define (create-file-ef word)
   (turn-on-filenames)
   (let ((files (glob (string-append word "*"))))
@@ -426,19 +450,19 @@
         (let ((current (car files)))
           (set! files (cdr files))
           current)))))
-          
-(define completions 
-  (make-parameter 
-    (list 
+
+(define completions
+  (make-parameter
+    (list
       (cons 'macros create-macro-ef)
-      (cons 'statics create-static-ef) 
+      (cons 'statics create-static-ef)
       (cons 'symbols create-symbol-ef))))
 
 (define quoted-completions
   (make-parameter
     (list
       (cons 'files create-file-ef))))
-      
+
 ;; This is the completion function called by readline
 ;; It's called repeatedly until it returns an empty string
 ;; (lambda'd to stop the compiler complaining about unused global var)
@@ -466,65 +490,65 @@
 ;; and then gets those procedures ready.
 (define (choose-completion-procs word)
   (map
-    (lambda (pair) ((cdr pair) word)) 
+    (lambda (pair) ((cdr pair) word))
     (if (= 34 is-quoted?)
       (quoted-completions)
       (completions))))
 
 ;; Things that will always be there...
-(define static-keywords (vector 
+(define static-keywords (vector
 						; R5RS
-						"abs" "acos" "and" "angle" "append" "apply" "asin" 
-						"assoc" "assq" "assv" "atan" "begin" "boolean?" 
-						"caar" "cadr" "call-with-current-continuation" 
-						"call-with-input-file" "call-with-output-file" 
-						"call-with-values" "car" "case" "cdddar" "cddddr" 
-						"cdr" "ceiling" "char->integer" "char-alphabetic?" 
-						"char-ci<=?" "char-ci<?" "char-ci=?" "char-ci>=?" 
-						"char-ci>?" "char-downcase" "char-lower-case?" 
-						"char-numeric?" "char-ready?" "char-upcase" 
-						"char-upper-case?" "char-whitespace?" "char<=?" 
-						"char<?" "char=?" "char>=?" "char>?" "char?" 
-						"close-input-port" "close-output-port" "complex?" 
-						"cond" "cons" "cos" "current-input-port" 
-						"current-output-port" "define" "define-syntax" 
-						"delay" "denominator" "display" "do" "dynamic-wind" 
-						"else" "eof-object?" "eq?" "equal?" "eqv?" "eval" 
-						"even?" "exact->inexact" "exact?" "exp" "expt" 
-						"floor" "for-each" "force" "gcd" "if" "imag-part" 
-						"inexact->exact" "inexact?" "input-port?" 
-						"integer->char" "integer?" "interaction-environment" 
-						"lambda" "lcm" "length" "let" "let*" "let-syntax" 
-						"letrec" "letrec-syntax" "list" "list->string" 
-						"list->vector" "list-ref" "list-tail" "list?" "load" 
-						"log" "magnitude" "make-polar" "make-rectangular" 
-						"make-string" "make-vector" "map" "max" "member" 
-						"memq" "memv" "min" "modulo" "negative?" "newline" 
-						"not" "null-environment" "null?" "number->string" 
-						"number?" "numerator" "odd?" "open-input-file" 
-						"open-output-file" "or" "output-port?" "pair?" 
-						"peek-char" "port?" "positive?" "procedure?" 
-						"quasiquote" "quote" "quotient" "rational?" 
-						"rationalize" "read" "read-char" "real-part" 
-						"real?" "remainder" "reverse" "round" 
-						"scheme-report-environment" "set!" "set-car!" 
-						"set-cdr!" "setcar" "sin" "sqrt" "string" 
-						"string->list" "string->number" "string->symbol" 
-						"string-append" "string-ci<=?" "string-ci<?" 
-						"string-ci=?" "string-ci>=?" "string-ci>?" 
-						"string-copy" "string-fill!" "string-length" 
-						"string-ref" "string-set!" "string<=?" "string<?" 
-						"string=?" "string>=?" "string>?" "string?" 
-						"substring" "symbol->string" "symbol?" 
+						"abs" "acos" "and" "angle" "append" "apply" "asin"
+						"assoc" "assq" "assv" "atan" "begin" "boolean?"
+						"caar" "cadr" "call-with-current-continuation"
+						"call-with-input-file" "call-with-output-file"
+						"call-with-values" "car" "case" "cdddar" "cddddr"
+						"cdr" "ceiling" "char->integer" "char-alphabetic?"
+						"char-ci<=?" "char-ci<?" "char-ci=?" "char-ci>=?"
+						"char-ci>?" "char-downcase" "char-lower-case?"
+						"char-numeric?" "char-ready?" "char-upcase"
+						"char-upper-case?" "char-whitespace?" "char<=?"
+						"char<?" "char=?" "char>=?" "char>?" "char?"
+						"close-input-port" "close-output-port" "complex?"
+						"cond" "cons" "cos" "current-input-port"
+						"current-output-port" "define" "define-syntax"
+						"delay" "denominator" "display" "do" "dynamic-wind"
+						"else" "eof-object?" "eq?" "equal?" "eqv?" "eval"
+						"even?" "exact->inexact" "exact?" "exp" "expt"
+						"floor" "for-each" "force" "gcd" "if" "imag-part"
+						"inexact->exact" "inexact?" "input-port?"
+						"integer->char" "integer?" "interaction-environment"
+						"lambda" "lcm" "length" "let" "let*" "let-syntax"
+						"letrec" "letrec-syntax" "list" "list->string"
+						"list->vector" "list-ref" "list-tail" "list?" "load"
+						"log" "magnitude" "make-polar" "make-rectangular"
+						"make-string" "make-vector" "map" "max" "member"
+						"memq" "memv" "min" "modulo" "negative?" "newline"
+						"not" "null-environment" "null?" "number->string"
+						"number?" "numerator" "odd?" "open-input-file"
+						"open-output-file" "or" "output-port?" "pair?"
+						"peek-char" "port?" "positive?" "procedure?"
+						"quasiquote" "quote" "quotient" "rational?"
+						"rationalize" "read" "read-char" "real-part"
+						"real?" "remainder" "reverse" "round"
+						"scheme-report-environment" "set!" "set-car!"
+						"set-cdr!" "setcar" "sin" "sqrt" "string"
+						"string->list" "string->number" "string->symbol"
+						"string-append" "string-ci<=?" "string-ci<?"
+						"string-ci=?" "string-ci>=?" "string-ci>?"
+						"string-copy" "string-fill!" "string-length"
+						"string-ref" "string-set!" "string<=?" "string<?"
+						"string=?" "string>=?" "string>?" "string?"
+						"substring" "symbol->string" "symbol?"
 						"syntax-rules" "tan" #| "transcript-off" ; not implemented
-						"transcript-on" |# "truncate" "values" "vector" 
-						"vector->list" "vector-fill!" "vector-length" 
-						"vector-ref" "vector-set!" "vector?" 
-						"with-input-from-file" "with-output-to-file" 
+						"transcript-on" |# "truncate" "values" "vector"
+						"vector->list" "vector-fill!" "vector-length"
+						"vector-ref" "vector-set!" "vector?"
+						"with-input-from-file" "with-output-to-file"
 						"write" "write-char" "zero?"
 						; csi commands
 						",?" ",p" ",d" ",du" ",dur" ",q" ",l" ",ln" ",r"
-						",s" ",tr" ",utr" ",t" ",x" 
+						",s" ",tr" ",utr" ",t" ",x"
 						))
 
 )
