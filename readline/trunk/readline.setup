@@ -3,7 +3,6 @@
 
 (use files)
 
-
 (define old-files
   (append
     (filter (lambda (y) (or (string-suffix? ".o" y)
@@ -33,15 +32,19 @@
   (if (and
         (find-library "bsd" "strlcat")
         (find-header "bsd/string.h"))
-    "-C -D_HAVE_LIBBSD=1"
+    "-C -DHAVE_LIBBSD=1"
     ""))
 
-(define-syntax check-rllibs 
+(define rl-extra-cflags
+  (string-append
+   "-C -D_GNU_SOURCE=1"))
+
+(define-syntax check-rllibs
   (syntax-rules ()
     ((_ libs)
      (and (print "trying: " libs)
           (handle-exceptions e #f
-            (compile/error readline-test.scm ,rl-extra-header ,libs))
+            (compile/error readline-test.scm ,rl-extra-cflags ,rl-extra-header ,libs))
 	  libs))))
 
 ;(define curry (lambda (f . c) (lambda x (apply f (append c x)))))
@@ -52,7 +55,7 @@
                     (check-rllibs " -lreadinline -lhistory")
                     (check-rllibs " -lreadline -lncurses")
                     (check-rllibs " -lreadline -lcurses")
-                    (check-rllibs " -lreadline -ltermcap")        
+                    (check-rllibs " -lreadline -ltermcap")
                     (check-rllibs " -lreadline -lhistory -lncurses")
                     (check-rllibs " -lreadline -lhistory -lcurses")
                     (check-rllibs " -lreadline -lhistory -ltermcap")
@@ -64,12 +67,12 @@
     (check-rllibs "-lreadline -lhistory -ltermcap")
     (check-rllibs "-lreadline -lhistory -lcurses")
     (check-rllibs "-lreadline -lhistory -lncurses")
-    (check-rllibs "-lreadline -ltermcap")        
+    (check-rllibs "-lreadline -ltermcap")
     (check-rllibs "-lreadline -lcurses")
     (check-rllibs "-lreadline -lhistory")
     (check-rllibs "-lreadline -lncurses")
     (check-rllibs "-lreadline")
-    (error 
+    (error
       (string-append
         "This extension requires GNU readline.  GNU readline "
         "may be found at ftp://ftp.gnu.org/pub/gnu/readline\n"
@@ -80,10 +83,10 @@
   #f
   (set! rl-extralib (string-append rl-extralib " -lbsd")))
 
-(compile -s -O2 readline.scm ,rl-extralib ,rl-extra-header)
+(compile -s -O2 readline.scm ,rl-extra-cflags ,rl-extralib ,rl-extra-header)
 
 (compile -c -O2 -d0 -j readline readline.scm
-         -o readline-static.o -unit readline ,rl-extralib ,rl-extra-header)
+         -o readline-static.o -unit readline ,rl-extra-cflags ,rl-extralib ,rl-extra-header)
 
 (compile -s -O2 -d0 readline.import.scm)
 
@@ -93,4 +96,3 @@
     `((version           "2.4")
       (static            "readline-static.o")
       (static-options    ,rl-extralib)))
-
