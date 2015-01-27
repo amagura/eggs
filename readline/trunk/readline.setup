@@ -3,16 +3,17 @@
 
 (use files)
 
+
 (define old-files
   (append
-   (filter (lambda (y) (or (string-suffix? ".o" y)
-			   (string-suffix? ".out" y)))
-	   (find-files "./"))
-   '("readline-test" "readline.c")))
+    (filter (lambda (y) (or (string-suffix? ".o" y)
+                            (string-suffix? ".out" y)))
+            (find-files "./"))
+    '("readline-test" "readline.c")))
 
 ;; cleans up from previous builds
 (do ((lst old-files (cdr lst)))
-    ((null? lst))
+  ((null? lst))
   (display (string-append "rm -f " (car lst)))
   (newline)
   (delete-file* (car lst)))
@@ -25,78 +26,71 @@
        (parameterize ((reset-handler
                        (lambda ()
                          (parameterize ((reset-handler old-reset))
-				       (error 'compile "compilation error")))))
-		     (compile args ...))))))
+                           (error 'compile "compilation error")))))
+         (compile args ...))))))
 
+(define rl-extra-header
+  (if (and
+        (find-library "bsd" "strlcat")
+        (find-header "bsd/string.h"))
+    "-C -D_HAVE_LIBBSD=1"
+    ""))
 
-(define rl-extra-cflags "-C -D_GNU_SOURCE=1")
-
-(define rl-bsd-header
-  (if (and (find-library "bsd" "strlcat")
-	   (find-header "bsd/string.h"))
-      "-C -DHAVE_LIBBSD=1"
-      ""))
-
-(define rl-extra-headers
-  (string-append
-   rl-bsd-header
-   ))
-
-(define-syntax check-rllibs
+(define-syntax check-rllibs 
   (syntax-rules ()
     ((_ libs)
      (and (print "trying: " libs)
           (handle-exceptions e #f
-			     (compile/error readline-test.scm ,rl-extra-header ,libs ,rl-extra-cflags))
+            (compile/error readline-test.scm ,rl-extra-header ,libs))
 	  libs))))
 
+;(define curry (lambda (f . c) (lambda x (apply f (append c x)))))
+#|
+(define rl-extralib
+  (list-ref (list-index (lambda (y) (equal? #t y))
+              (list (check-rllibs " -lreadline")
+                    (check-rllibs " -lreadinline -lhistory")
+                    (check-rllibs " -lreadline -lncurses")
+                    (check-rllibs " -lreadline -lcurses")
+                    (check-rllibs " -lreadline -ltermcap")        
+                    (check-rllibs " -lreadline -lhistory -lncurses")
+                    (check-rllibs " -lreadline -lhistory -lcurses")
+                    (check-rllibs " -lreadline -lhistory -ltermcap")
+                    (check-rllibs " -lreadline -lhistory -lncurses")
+                    (check-rllibs " -lreadline -lhistory -lcurses")
+                    (check-rllibs " -lreadline -lhistory -ltermcap"))))|#
 (define rl-extralib
   (or
-   (check-rllibs "-lreadline -lhistory -ltermcap")
-   (check-rllibs "-lreadline -lhistory -lcurses")
-   (check-rllibs "-lreadline -lhistory -lncurses")
-   (check-rllibs "-lreadline -ltermcap")
-   (check-rllibs "-lreadline -lcurses")
-   (check-rllibs "-lreadline -lhistory")
-   (check-rllibs "-lreadline -lncurses")
-   (check-rllibs "-lreadline")
-   (error
-    (string-append
-     "This extension requires GNU readline.  GNU readline "
-     "may be found at ftp://ftp.gnu.org/pub/gnu/readline\n"
-     "For more information, please consult "
-     "http://wiki.call-cc.org/egg/readline#installation-problems\n"))))
+    (check-rllibs "-lreadline -lhistory -ltermcap")
+    (check-rllibs "-lreadline -lhistory -lcurses")
+    (check-rllibs "-lreadline -lhistory -lncurses")
+    (check-rllibs "-lreadline -ltermcap")        
+    (check-rllibs "-lreadline -lcurses")
+    (check-rllibs "-lreadline -lhistory")
+    (check-rllibs "-lreadline -lncurses")
+    (check-rllibs "-lreadline")
+    (error 
+      (string-append
+        "This extension requires GNU readline.  GNU readline "
+        "may be found at ftp://ftp.gnu.org/pub/gnu/readline\n"
+        "For more information, please consult "
+        "http://wiki.call-cc.org/egg/readline#installation-problems\n"))))
 
-;(define curry (lambda (f . c) (lambda x (apply f (append c x)))))
-#|(define rl-extralib
-  (list-ref (list-index (lambda (y) (equal? #t y))
-			(list (check-rllibs " -lreadline")
-			      (check-rllibs " -lreadinline -lhistory")
-			      (check-rllibs " -lreadline -lncurses")
-			      (check-rllibs " -lreadline -lcurses")
-			      (check-rllibs " -lreadline -ltermcap")
-			      (check-rllibs " -lreadline -lhistory -lncurses")
-			      (check-rllibs " -lreadline -lhistory -lcurses")
-			      (check-rllibs " -lreadline -lhistory -ltermcap")
-			      (check-rllibs " -lreadline -lhistory -lncurses")
-			      (check-rllibs " -lreadline -lhistory -lcurses")
-			      (check-rllibs " -lreadline -lhistory -ltermcap")))))
-|#
+(if (string=? "" rl-extra-header)
+  #f
+  (set! rl-extralib (string-append rl-extralib " -lbsd")))
 
-(if (string=? "" rl-bsd-header)
-    #f
-    (set! rl-extralib (string-append rl-extralib " -lbsd")))
-
-(compile -s -O2 readline.scm ,rl-extralib ,rl-extra-header ,rl-extra-cflags)
+(compile -s -O2 readline.scm ,rl-extralib ,rl-extra-header)
 
 (compile -c -O2 -d0 -j readline readline.scm
-         -o readline-static.o -unit readline ,rl-extralib ,rl-extra-header ,rl-extra-cflags)
+         -o readline-static.o -unit readline ,rl-extralib ,rl-extra-header)
 
 (compile -s -O2 -d0 readline.import.scm)
 
 (install-extension
- 'readline
- '("readline.so" "readline.import.so" "readline-static.o")
- `((version           "3.0")
-   (static            "readline-static.o")
-   (static-options    ,rl-extralib)))
+    'readline
+    '("readline.so" "readline.import.so" "readline-static.o")
+    `((version           "2.4")
+      (static            "readline-static.o")
+      (static-options    ,rl-extralib)))
+
