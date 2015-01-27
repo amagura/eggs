@@ -588,7 +588,7 @@ char *gnu_history_entry(int ind, int time)
 char *gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
 {
   const size_t bufsize = history_total_bytes();
-  char *buf = malloc(bufsize);
+  char *buf = malloc(bufsize+1);
   HIST_ENTRY **hist_list = history_list();
   int idx;
 

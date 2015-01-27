@@ -29,12 +29,11 @@ build:
 kill:
 	killall -9 csi || true
 
-check: kill build units
+check: kill build
 	cd $(mydir)/../trunk; \
 	  csi -n tests/run.scm
 	cd $(mydir)/../extra; \
-	  ./test.bats; \
-	  ./units;
+	  ./test.bats;
 
 sure: kill
 	cd $(mydir)/../trunk; \
@@ -81,7 +80,7 @@ doc:
 	#  for _f in $(DOCS); do asciidoc --theme volnitsky "$$_f"; done
 
 % : %.c
-	$(CC) $(CFLAGS) -ggdb -g $(LDFLAGS) -lcunit -lreadline -o $@ $<
+	$(CC) $(CFLAGS) -ggdb -g $(LDFLAGS) -lreadline -o $@ $<
 
 %.gpp : %.g
 	cd $(mydir)/../extra; \

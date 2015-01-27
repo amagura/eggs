@@ -396,7 +396,7 @@
     (gnu-readline-set-bounce-ms
      readline#set-bounce-ms)
     (gnu-history-install-file-manager
-     readline#history-install-file-manager)
+     readline#install-history-file)
     (make-gnu-readline-port
      readline#make-readline-port)
     (gnu-readline-completions
