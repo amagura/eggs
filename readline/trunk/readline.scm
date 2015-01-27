@@ -85,7 +85,7 @@
 
     history-newlines
     history-list-length
-    %history-list
+    history-list
 
     history-get-entry
 
@@ -93,16 +93,26 @@
     history-previous-entry
     history-next-entry
     history-position
-    search-history
+
     history-search
-    search-history-forward
     history-search-forward
-    search-history-backward
     history-search-backward
+    history-search-starts-with
+    history-search-backward-starts-with
+    history-search-forward-starts-with
+    history-search-absolute
+
+    history-use-timestamps
+
+    %history-list-size
+
+    history-stifle
+    history-stifled?
+
+    install-history-file
 
     legacy-bindings
     use-legacy-bindings
-    install-history-file
     parse-and-bind
     completions)
   (import scheme chicken foreign ports data-structures lolevel)
@@ -195,28 +205,44 @@
 ;; returns match on succ, #f on fail.
 ;; xxx use `(get-keyword)' to access offset:, match:, and index:
 ;; xxx `index:' corresponds to the history-position within history_list of the match
-(define (search-history string direction)
-  (define offset
-    ((foreign-lambda int "history_search" c-string int) string direction))
-  (if (= offset -1)
-      #f
-      (list (cons 'match
-		  (list (cons 'line (history-current-entry))
-			(cons 'time (history-current-entry #t))
-			(cons 'offset offset)))
-	    (cons 'index (history-position)))))
 
-(define history-search search-history)
+(define (history-search-starts-with string direction)
+  (let ((success
+	 ((foreign-lambda int "history_search_prefix" c-string int) string direction)))
+    (if (= success -1)
+	#f
+	(list (cons 'match
+		    (list (cons 'line (history-current-entry))
+			  (cons 'time (history-current-entry #t))))
+	      (cons 'index (history-position))))))
 
-(define (search-history-backward string)
-  (search-history string -1))
+(define (history-search-absolute string direction position)
+  (let ((result
+	 ((foreign-lambda int "history_search_pos" c-string int int) string direction position)))
+    (if (= result -1)
+	#f
+	result)))
 
-(define history-search-backward search-history-backward)
+(define (history-search string direction)
+  (let ((offset
+	 ((foreign-lambda int "history_search" c-string int) string direction)))
+	(if (= offset -1)
+	    #f
+	    (list (cons 'match
+			(list (cons 'line (history-current-entry))
+			      (cons 'time (history-current-entry #t))
+			      (cons 'offset offset)))
+		  (cons 'index (history-position))))))
 
-(define (search-history-forward string)
-  (search-history string 0))
+(define (history-search-backward string)
+  (history-search string -1))
+(define (history-search-forward string)
+  (history-search string 1))
 
-(define history-search-forward search-history-forward)
+(define (history-search-backward-starts-with string)
+  (history-search-starts-with string -1))
+(define (history-search-forward-starts-with string)
+  (history-search-starts-with string 1))
 
 (define history-list-length
   (foreign-lambda int "gnu_history_list_length"))
@@ -249,7 +275,7 @@
  "a\nb\nc\nd" -> ((1 . "a") (2 . "b") (3 . "c") (4 . "d"))
 
  |#
-(define (%history-list)
+(define (history-list)
   `(,@(string-split ((foreign-lambda c-string* "gnu_history_list")))))
 
 ;; (gnu-history-position) -> current history position within history_list
