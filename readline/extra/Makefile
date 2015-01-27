@@ -29,11 +29,12 @@ build:
 kill:
 	killall -9 csi || true
 
-check: kill build
+check: kill build units
 	cd $(mydir)/../trunk; \
 	  csi -n tests/run.scm
 	cd $(mydir)/../extra; \
-	  ./test.bats
+	  ./test.bats; \
+	  ./units;
 
 sure: kill
 	cd $(mydir)/../trunk; \
@@ -43,6 +44,7 @@ clean: tidy
 	cd $(mydir); \
 	  $(RM) build; \
 	  $(RM) test; \
+	  $(RM) units; \
 	  cd ../trunk ;\
 	  for _f in *.so *.html; do $(RM) "$$_f"; done
 
@@ -79,4 +81,13 @@ doc:
 	#  for _f in $(DOCS); do asciidoc --theme volnitsky "$$_f"; done
 
 % : %.c
-	$(CC) $(CFLAGS) -ggdb -g $(LDFLAGS) -lreadline -o $@ $<
+	$(CC) $(CFLAGS) -ggdb -g $(LDFLAGS) -lcunit -lreadline -o $@ $<
+
+%.gpp : %.g
+	cd $(mydir)/../extra; \
+	cat macros.gpp $< > $@
+
+%.c : %.gpp
+	cd $(mydir)/../extra; \
+	gpp --nostdinc -O $@ $<
+	$(RM) $<

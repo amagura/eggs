@@ -12,9 +12,9 @@ struct balnce {
 int main(void) {
   char *str = "(hello";
   char *_str = ":";
-  int idx[3];
-  int *hdx;
-  hdx = strnof_delim(str, '(', ')', idx);
-  printf("%d\n", hdx[0]);
+  check_prompt_balance("(hello");
+  printf("%d\n", track_balnc('(', 0));
+  check_prompt_balance(")");
+  printf("%d\n", track_balnc('(', 0));
   return 0;
 }

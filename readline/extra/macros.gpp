@@ -1,2 +1,5 @@
-#mode meta "@" "\n" " " " " "\n" "(" ")"
-@mode user "" "" "(" "," ")" "(" ")" "#" "\\"
+#mode meta "#@" "\n" " " " " "\n" "(" ")"
+#@mode user "@" "" "(" "," ")" "(" ")" "#" "\\"
+
+#@define START_TRACE RL_EGG_BEGIN_TRACE
+#@define END_TRACE RL_EGG_END_TRACE
