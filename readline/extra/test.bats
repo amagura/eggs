@@ -2,7 +2,7 @@
 # vim: ft=sh:
 
 @test "quote balancing in csi" {
-  result="$(csi -n ~/code/readline/extra/rc <<<"
+  result="$(csi -n $STARTDIR/rc <<<"
   \" \"
   \"\"
   \"\"\"\"
@@ -13,7 +13,7 @@
 }
 
 @test "paren balancing in csi" {
-  result="$(csi -n ~/code/readline/extra/rc <<<"
+  result="$(csi -n $STARTDIR/rc <<<"
   '( )
   '()
   '(())
@@ -27,7 +27,7 @@
 }
 
 @test "commented-out paren balancing in csi" {
-  result="$(csi -n ~/code/readline/extra/rc <<<"
+  result="$(csi -n $STARTDIR/rc <<<"
   ;(
 
   #;()

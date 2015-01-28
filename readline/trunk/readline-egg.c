@@ -35,13 +35,41 @@
 /* **** BEGIN ****
  * Macros *
  */
+#define RL_EGG_SETBALNC(RL_EGG_ODELIM,					\
+			RL_EGG_CDELIM,					\
+			RL_EGG_BVAR)					\
+  do {									\
+    char *cp = &rl_line_buffer[rl_end];					\
+    if (cp == rl_line_buffer)						\
+      return 0;								\
+    do {								\
+      if (cp != rl_line_buffer &&					\
+	  peek_chr(cp, rl_line_buffer, false) == '\\')			\
+	continue;							\
+      if (*cp == (RL_EGG_CDELIM)) {					\
+	++((RL_EGG_BVAR)[1]); /* increment close */			\
+	--((RL_EGG_BVAR)[2]); /* deincrement total */			\
+      } else if (*cp == (RL_EGG_ODELIM)) {				\
+	++((RL_EGG_BVAR)[0]); /* increment open */			\
+	++((RL_EGG_BVAR)[2]); /* increment total */			\
+      }									\
+    } while (cp-- != rl_line_buffer);					\
+  } while (0)
 
-#define RL_EGG_MEMSAME(RL_EGG_MEM_1, RL_EGG_MEM_2)	\
-  (((RL_EGG_MEM_1) == (RL_EGG_MEM_2) && 1) || 0)
-#define RL_EGG_BOOLSTR(RL_EGG_BOOL)		\
-  (((RL_EGG_BOOL) && "true") || "false")
-#define RL_EGG_NULLCASE(RL_EGG_CHECKED, RL_EGG_DEFAULT)	\
-  ((RL_EGG_CHECKED) || (RL_EGG_DEFAULT))
+#define RL_EGG_ENSRE_SIMI_BALNC(RL_EGG_ODELIM,				\
+				RL_EGG_CDELIM,				\
+				RL_EGG_BVAR)				\
+  do {									\
+    if ((RL_EGG_ODELIM) == (RL_EGG_CDELIM) && (RL_EGG_BVAR)[1] > 0) {	\
+      if ((RL_EGG_BVAR)[1] % 2 == 1)					\
+	while(((RL_EGG_BVAR)[0])++ < --((RL_EGG_BVAR)[1]));		\
+      else {								\
+	(RL_EGG_BVAR)[0] = (RL_EGG_BVAR)[1] * 0.5;			\
+	(RL_EGG_BVAR)[1] *= 0.5;					\
+      }									\
+    }									\
+  } while(0)
+
 /* *** BEGIN ***
  * Conditional Macros *
  */
@@ -58,6 +86,13 @@
 #endif
 
 #if DEBUG /* NOTE change this to 1 to enable debug messages */
+#define RL_EGG_STACK(format, ...)		\
+  do {						\
+    RL_EGG_BEGIN_TRACE;				\
+    RL_EGG_DEBUG((format), __VA_ARGS__);	\
+    RL_EGG_END_TRACE;				\
+  } while(0)
+
 #define RL_EGG_BEGIN_TRACE fprintf(stderr, "++ %s{%d}:\n\n", __FILE__, __LINE__)
 #define RL_EGG_END_TRACE fprintf(stderr, "\n-- %s %s `%s'\n\n", "In", "function", __FUNCTION__)
 #define RL_EGG_DEBUG(format, ...)		\
@@ -67,6 +102,7 @@
     fprintf(stderr, "%s", "\e[0m");		\
   } while(0)
 #else
+#define RL_EGG_STACK(format, ...)
 #define RL_EGG_BEGIN_TRACE
 #define RL_EGG_END_TRACE
 #define RL_EGG_DEBUG(format, ...)
@@ -84,23 +120,17 @@
 #endif
 /* *** END ***
    Macros
- * *** END ***
  */
-
-/* *** BEGIN ***
-   Globals
- * *** BEGIN ***
- */
-struct delim {
-  char open_delim;
-  char close_delim;
-  int open;
-  int close;
-};
 
 static int gnu_readline_bounce_ms = 500;
 static int gnu_history_newlines = 0;
 static char *gnu_readline_buf = NULL;
+
+struct balance {
+  int paren[3]; // 0 -> open, 1 -> close, 2 -> total
+  int brace[3];
+  int quote[3];
+} balnc;
 
 #if 0 // NOT YET IMPLEMENTED
 static struct gnu_readline_current_paren_color_t {
@@ -118,16 +148,11 @@ static struct gnu_readline_current_paren_color_t {
  *  ~ Alexej
  */
 
-/* *** END ***
-   Globals
- * *** END ***
- */
-
-/* *** BEGIN ***
-   Inline Functions
- */
 INLINE char peek_chr(char *cp, char *stringp, bool direct)
 {
+  RL_EGG_DEBUG("cp: %c", *cp);
+  RL_EGG_DEBUG("stringp: %c", *stringp);
+
   if (direct) {
     char next = '\0';
     if (cp != &stringp[strlen(stringp) - 1]) {
@@ -149,32 +174,13 @@ INLINE char peek_chr(char *cp, char *stringp, bool direct)
   }
 }
 
-INLINE int strnof_chr(char *str, const char chr)
+INLINE int strnof_delim(char *str, char odelim, char cdelim, int count[2])
 {
-  char *cp = &str[strlen(str)];
-  int count = 0;
-
-  if (cp == str)
-    return -1;
-
-  do {
-    if (cp != str && peek_chr(cp, str, false) == '\\')
-      continue;
-
-    if (*cp == chr)
-      ++count;
-
-  } while(cp-- != str);
-  return count;
-}
-
-INLINE int strnof_delim(char *str, struct delim *info)
-{
-  char *cp = &str[strlen(str)];
-  info->open = 0;
-  info->close = 0;
-
-  RL_EGG_DEBUG("open: %d\nclose: %d\n", info->open, info->open);
+  memset(count, 0, sizeof(*count)*2);
+  RL_EGG_BEGIN_TRACE;
+  RL_EGG_DEBUG("str: %s\n", str);
+  char *cp = strchr(str, '\0');
+  RL_EGG_END_TRACE;
 
   if (cp == str)
     return 1;
@@ -183,53 +189,46 @@ INLINE int strnof_delim(char *str, struct delim *info)
     if (cp != str && peek_chr(cp, str, false) == '\\')
       continue;
 
-    if (*cp == info->close_delim) {
-      ++info->close;
-    } else if (*cp == info->open_delim) {
-      ++info->open; // increment open
+    if (*cp == cdelim) {
+      ++count[1]; // increment close
+    } else if (*cp == odelim) {
+      ++count[0]; // increment open
     }
   } while(cp-- != str);
 
-  if (info->open_delim == info->close_delim && info->close > 0) {
-    if (info->close % 2 == 1)
-      while(info->open++ < --info->close);
+  if (odelim == cdelim && count[1] > 0) {
+    if (count[1] % 2 == 1)
+      while(count[0]++ < --count[1]);
     else {
-      info->open = info->close * 0.5;
-      info->close *= 0.5;
+      count[0] = count[1] * 0.5;
+      count[1] *= 0.5;
     }
   }
 
   RL_EGG_BEGIN_TRACE;
-  RL_EGG_DEBUG("open: %d\nclose: %d\n", info->open, info->close);
+  RL_EGG_DEBUG("open: %d\nclose: %d\n", count[0], count[1]);
   RL_EGG_END_TRACE;
-
   return 0;
 }
 
-/* sets `buf' to the unquoted portions of `str'
- * returns:
- * (*) 0 (on success)
- * (*) -1 if `str', has no quoted portions, leaving `buf' untouched.
- * (*) `errno' on error
- */
-INLINE int str_nquotd(char *str, char *buf, const size_t bufsize)
+INLINE char *str_unquotd(char *str)
 {
-  struct delim info;
-  //char *token, *tmp;
-  //int even;
-  int result = -1;
-  info.open_delim = '"';
-  info.close_delim = '"';
-  strnof_delim(str, &info);
-  RL_EGG_DEBUG("idx[0]: %d\n", info.open);
-  RL_EGG_DEBUG("idx[1]: %d\n", info.close);
+  //RL_EGG_BEGIN_TRACE;
+  //RL_EGG_DEBUG("str: `%s'\n", str);
+  //RL_EGG_END_TRACE;
 
-  if (info.open == 0)
-    goto end;
-  int even = info.open - abs(info.open - info.close);
+  char buf[BUFSIZ];
+  char *rbuf = buf;
+  int count[2];
+  strnof_delim(str, '"', '"', count);
+  //RL_EGG_DEBUG("idx[0]: %d\n", count[0]);
+  //RL_EGG_DEBUG("idx[1]: %d\n", count[1]);
+
+  if (count[0] == 0)
+    return str;
+  int even = count[0] - abs(count[0] - count[1]);
   char *token, *tmp, *rest;
   token = NULL;
-  tmp = NULL;
   rest = NULL;
   tmp = strdupa(str);
 
@@ -237,27 +236,73 @@ INLINE int str_nquotd(char *str, char *buf, const size_t bufsize)
 #if DEBUG
     perror(__FUNCTION__);
 #endif
-    result = errno;
-    goto end;
+    return NULL;
   }
 
   token = strtok_r(tmp, "\"", &rest);
-  RL_EGG_DEBUG("token: %s\n", token);
-  RL_EGG_STRCAT(buf, token, bufsize);
+  if (token == NULL)
+    return str;
+  //RL_EGG_DEBUG("token: %s\n", token);
+  RL_EGG_STRCAT(buf, token, BUFSIZ);
 
   while ((token = strtok_r(NULL, "\"", &rest)) != NULL) {
-    RL_EGG_DEBUG("token (while): %s\n", token);
-    RL_EGG_DEBUG("even (while): %d\n", even);
+    //RL_EGG_DEBUG("token (while): %s\n", token);
+    //RL_EGG_DEBUG("even (while): %d\n", even);
     if (even % 2 == 1) {
-      RL_EGG_STRCAT(buf, token, bufsize);
+      RL_EGG_STRCAT(buf, token, BUFSIZ);
       --even;
     } else {
       ++even;
     }
   }
-  ++result;
- end:
-  return result;
+  return rbuf;
+}
+
+INLINE int set_dquote_balnc()
+{
+  RL_EGG_BEGIN_TRACE;
+  RL_EGG_END_TRACE;
+  int count[2];
+  strnof_delim(rl_line_buffer, '"', '"', count);
+  RL_EGG_DEBUG("open: %d\nclose: %d\n", count[0], count[1]);
+  balnc.quote[2] = count[0] - count[1];
+  if ((balnc.quote[2]) == 0)
+    return -1;
+  return balnc.quote[2];
+}
+
+INLINE int set_paren_balnc()
+{
+  RL_EGG_BEGIN_TRACE;
+  RL_EGG_END_TRACE;
+  char *tmp = NULL;
+  if (strchr(rl_line_buffer, '"') != NULL) {
+    tmp = str_unquotd(rl_line_buffer);
+  } else {
+    tmp = rl_line_buffer;
+  }
+  RL_EGG_SETBALNC('(', ')', balnc.paren);
+  RL_EGG_ENSRE_SIMI_BALNC('(', ')', balnc.paren);
+  if ((balnc.paren[2]) == 0)
+    return -1;
+  return balnc.paren[0] - balnc.paren[1];
+}
+
+INLINE int set_brace_balnc()
+{
+  RL_EGG_BEGIN_TRACE;
+  RL_EGG_END_TRACE;
+  char *tmp = NULL;
+  if (strchr(rl_line_buffer, '"') != NULL) {
+    tmp = str_unquotd(rl_line_buffer);
+  } else {
+    tmp = rl_line_buffer;
+  }
+  RL_EGG_SETBALNC('[', ']', balnc.brace);
+  RL_EGG_ENSRE_SIMI_BALNC('[', ']', balnc.brace);
+  if ((balnc.brace[2]) == 0)
+    return -1;
+  return balnc.brace[0] - balnc.brace[1];
 }
 
 #if 0 // NOT YET IMPLEMENTED
@@ -306,78 +351,13 @@ INLINE void gnu_readline_timid_delay(int ms)
   struct pollfd pfd;
 
   pfd.fd = fileno(rl_instream);
-  pfd.events = POLLIN || POLLPRI;
+  pfd.events = POLLIN | /* | */ POLLPRI;
   pfd.revents = 0;
-
   poll(&pfd, 1, ms);
 }
 /* *** END ***
  * Inline Functions
  */
-
-int track_balnc(const char open_delim, const int unbal)
-{
-  static int braces = 0;
-  static int parens = 0;
-  static int dquotes = 0;
-  if (open_delim == '(') {
-    parens += unbal;
-    return parens;
-  } else if (open_delim == '[') {
-    braces += unbal;
-    return braces;
-  } else {
-    dquotes += unbal;
-    return dquotes;
-  }
-}
-
-INLINE void reset_prompt_balance()
-{
-
-  int balnc = track_balnc('"', 0);
-  track_balnc('"', -balnc);
-  balnc = track_balnc('(', 0);
-  track_balnc('(', -balnc);
-  balnc = track_balnc('[', 0);
-  track_balnc('[', -balnc);
-}
-
-INLINE bool check_prompt_balance(char *str)
-{
-  bool result = 1;
-  char *buf = alloca(RL_EGG_NULLCASE(rl_end, strlen(str)));
-  int has_quotes = str_nquotd(str, buf, RL_EGG_NULLCASE(rl_end, strlen(str)));
-  int idx;
-
-  struct delim info;
-  for (idx = 0; idx < 2; ++idx) {
-    if (result != 1)
-      break;
-    if (idx == 1) {
-      RL_EGG_DEBUG("%s\n", "ptr is brace");
-      info.open_delim = '[';
-      info.close_delim = ']';
-       } else if (idx < 1) {
-      RL_EGG_DEBUG("%s\n", "ptr is paren");
-      info.open_delim = '(';
-      info.close_delim = ')';
-      } else {
-      RL_EGG_DEBUG("%s\n", "ptr is dquote");
-      info.open_delim = '"';
-      info.close_delim = '"';
-    }
-    if (info.open_delim != '"') {
-      if (has_quotes == -1)
-	strnof_delim(str, &info);
-      else
-	strnof_delim(buf, &info);
-    }
-    (track_balnc(info.open_delim, info.open - info.close) % 2) == 0 || --result;
-  }
-  return (bool)result;
-}
-
 
 // Bounces the cursor to the matching paren for a while
 int gnu_readline_paren_bounce(int count, int key)
@@ -496,6 +476,9 @@ void gnu_readline_init()
   using_history();
   rl_bind_key(')', gnu_readline_paren_bounce);
   rl_bind_key(']', gnu_readline_paren_bounce);
+  memset(balnc.quote, 0, sizeof(balnc.quote)*3);
+  memset(balnc.paren, 0, sizeof(balnc.paren)*3);
+  memset(balnc.brace, 0, sizeof(balnc.brace)*3);
 #if 0
   rl_bind_keyseq("[D", highlight_paren);
 #endif
@@ -518,7 +501,7 @@ char *gnu_readline_readline(char *prompt, char *prompt2)
     gnu_readline_buf = NULL;
   }
 
-  if (check_prompt_balance(rl_line_buffer))
+  if (!(balnc.quote[2] || balnc.paren[2] || balnc.brace[2]))
     gnu_readline_buf = readline(prompt);
   else
     gnu_readline_buf = readline(prompt2);
@@ -529,6 +512,21 @@ char *gnu_readline_readline(char *prompt, char *prompt2)
       add_history(gnu_readline_buf);
       ++gnu_history_newlines;
     }
+  }
+
+  if (rl_end > 0) {
+    RL_EGG_DEBUG("balnc.quote: total: %d\nopen: %d\nclose: %d\n", balnc.quote[2], balnc.quote[0], balnc.quote[1]);
+    RL_EGG_DEBUG("balnc.paren: total: %d\nopen: %d\nclose: %d\n", balnc.paren[2], balnc.paren[0], balnc.paren[1]);
+    int p_reset = set_paren_balnc(rl_line_buffer);
+    int b_reset = set_brace_balnc(rl_line_buffer);
+    int q_reset = set_dquote_balnc(rl_line_buffer);
+
+    if (q_reset == -1)
+      memset(balnc.quote, 0, sizeof(balnc.quote)*3);
+    if (p_reset == -1)
+      memset(balnc.paren, 0, sizeof(balnc.paren)*3);
+    if (b_reset == -1)
+      memset(balnc.brace, 0, sizeof(balnc.brace)*3);
   }
 
 #if 0
@@ -550,7 +548,7 @@ char *gnu_readline_readline(char *prompt, char *prompt2)
 
 void gnu_readline_signal_cleanup()
 {
-  reset_prompt_balance();
+  reset_balnc();
   free(gnu_readline_buf);
   gnu_readline_buf = NULL;
   rl_free_line_state();
@@ -588,15 +586,21 @@ char *gnu_history_entry(int ind, int time)
 char *gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
 {
   const size_t bufsize = history_total_bytes();
-  char *buf = malloc(bufsize+1);
+  /* should be free'd by Chicken Scheme */
+  char *buf = calloc(1, history_total_bytes());
   HIST_ENTRY **hist_list = history_list();
   int idx;
+
+  *buf = '\0';
 
   if (hist_list == NULL)
     return NULL;
   RL_EGG_DEBUG("RL_EGG_STRCAT: %s\n", RL_EGG_STRCAT_FN_USED);
+  RL_EGG_DEBUG("buf@%d: %s\n", __LINE__, buf);
   RL_EGG_STRCAT(buf, hist_list[0]->line, bufsize);
+  RL_EGG_DEBUG("buf@%d: %s\n", __LINE__, buf);
   RL_EGG_STRCAT(buf, "\n", bufsize);
+  RL_EGG_DEBUG("buf@%d: %s\n", __LINE__, buf);
 
   for (idx = 1; idx < history_length; ++idx) {
     RL_EGG_STRCAT(buf, hist_list[idx]->line, bufsize);

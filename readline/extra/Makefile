@@ -33,7 +33,7 @@ check: kill build
 	cd $(mydir)/../trunk; \
 	  csi -n tests/run.scm
 	cd $(mydir)/../extra; \
-	  ./test.bats;
+	  STARTDIR=$(mydir) ./test.bats;
 
 sure: kill
 	cd $(mydir)/../trunk; \
@@ -90,3 +90,6 @@ doc:
 	cd $(mydir)/../extra; \
 	gpp --nostdinc -O $@ $<
 	$(RM) $<
+
+expand:
+	$(CC) $(CFLAGS) -ggdb -g -lreadline -E -o readline-egg.e readline-egg.c

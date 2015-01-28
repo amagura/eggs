@@ -69,54 +69,56 @@
 
 (define ##readline#repl-prompt repl-prompt)
 
-(module readline
-  (readline
-    make-readline-port
-    %signal-cleanup
-    clear-history
-    %read-history
-    %write-history
-    %append-history
-    %truncate-history
-    add-history
-    add-history-time
+;;;; Toplevel Commands
 
-    set-bounce-ms
 
-    history-newlines
-    history-list-length
-    history-list
+(module readline (readline
+		  make-readline-port
+		  clear-history
+		  %signal-cleanup
+		  %read-history
+		  %write-history
+		  %append-history
+		  %truncate-history
 
-    history-get-entry
+		  add-history
+		  add-history-timestamp
 
-    history-current-entry
-    history-previous-entry
-    history-next-entry
-    history-position
+		  set-bounce-ms
 
-    history-search
-    history-search-forward
-    history-search-backward
-    history-search-starts-with
-    history-search-backward-starts-with
-    history-search-forward-starts-with
-    history-search-absolute
+		  history-newlines
+		  history-list-length
+		  history-list
 
-    history-use-timestamps
+		  history-get-entry
+		  history-current-entry
+		  history-previous-entry
+		  history-next-entry
+		  history-position
 
-    %history-list-size
+		  history-search
+		  history-search-forward
+		  history-search-backward
+		  history-search-starts-with
+		  history-search-backward-starts-with
+		  history-search-forward-starts-with
+		  history-search-absolute
 
-    history-stifle
-    history-stifled?
+		  history-use-timestamps
 
-    install-history-file
+		  %history-list-size
+		  history-stifle
+		  history-stifled?
 
-    legacy-bindings
-    use-legacy-bindings
-    parse-and-bind
-    completions)
-  (import scheme chicken foreign ports data-structures lolevel)
-  (use posix)
+		  install-history-file
+
+		  legacy-bindings
+		  use-legacy-bindings
+		  parse-and-bind
+		  completions
+		  )
+	(import scheme chicken foreign ports data-structures)
+	(use posix lolevel)
 
 #>
  #include "readline-egg.c"
@@ -158,7 +160,7 @@
 (define add-history
   (foreign-lambda void "add_history" c-string))
 
-(define add-history-time
+(define add-history-timestamp
   (foreign-lambda void "add_history_time" c-string))
 
 (define history-newlines
@@ -521,7 +523,7 @@
 
 ;; Things that will always be there...
 (define static-keywords (vector
-						; R5RS
+			 ;;; R5RS
 			 "abs" "acos" "and" "angle" "append" "apply" "asin"
 			 "assoc" "assq" "assv" "atan" "begin" "boolean?"
 			 "caar" "cadr" "call-with-current-continuation"
@@ -576,3 +578,6 @@
 			 ))
 
 )
+
+;; Toplevel commands
+(toplevel-command 'rl!! (readline#history-current-entry) "expands to the previous expression.")
