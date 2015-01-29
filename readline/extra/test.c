@@ -1,6 +1,8 @@
+#define _GNU_SOURCE 1
 #define RL_EGG_TESTING 1
 #define DEBUG 1
 #define INLINE
+#include <stdarg.h>
 #include "../trunk/readline-egg.c"
 
 struct balnce {
@@ -10,11 +12,12 @@ struct balnce {
 } bal;
 
 int main(void) {
-  char *str = "(hello";
-  char *_str = ":";
-  check_prompt_balance("(hello");
-  printf("%d\n", track_balnc('(', 0));
-  check_prompt_balance(")");
-  printf("%d\n", track_balnc('(', 0));
+  char *str = "blue";
+  char *nstr = memsafe_concat("hello, ", str, NULL);
+  printf("%s\n", nstr);
+  free(nstr);
+  char *tmp = str_unquotd("\"blue\"a");
+  printf("%s\n", tmp);
+  free(tmp);
   return 0;
 }

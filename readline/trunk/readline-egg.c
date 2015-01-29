@@ -31,6 +31,8 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <alloca.h>
+#include <stdarg.h>
+#include <limits.h>
 
 /* **** BEGIN ****
  * Macros *
@@ -104,6 +106,45 @@ static struct gnu_readline_current_paren_color_t {
  *  ~ Alexej
  */
 
+/* from popa3d a POP3 server: */
+INLINE char *memsafe_concat(const char *s1, ...)
+{
+  va_list args;
+  const char *s;
+  char *p, *result;
+  unsigned long l, m, n;
+
+  m = n = strlen(s1);
+  va_start(args, s1);
+  while ((s = va_arg(args, char *))) {
+    l = strlen(s);
+    if ((m += l) < l) break;
+  }
+  va_end(args);
+  if (s || m >= INT_MAX) return NULL;
+
+  result = (char *)malloc(m + 1);
+  if (!result) return NULL;
+
+  memcpy(p = result, s1, n);
+  p += n;
+  va_start(args, s1);
+  while ((s = va_arg(args, char *))) {
+    l = strlen(s);
+    if ((n += l) < l || n > m) break;
+    memcpy(p, s, l);
+    p += l;
+  }
+  va_end(args);
+  if (s || m != n || p != result + n) {
+    free(result);
+    return NULL;
+  }
+
+  *p = 0;
+  return result;
+}
+
 INLINE char *concat (const char *str, ...)
 {
   va_list ap;
@@ -156,10 +197,7 @@ INLINE char *concat (const char *str, ...)
 
 INLINE char peek_chr(char *cp, char *stringp, bool direct)
 {
-  RL_EGG_DEBUG("cp: %c", *cp);
-  RL_EGG_DEBUG("stringp: %c", *stringp);
-
-  if (direct) {
+    if (direct) {
     char next = '\0';
     if (cp != &stringp[strlen(stringp) - 1]) {
       next = *(++cp);
@@ -224,6 +262,7 @@ INLINE char *str_unquotd(char *str)
   //RL_EGG_END_TRACE;
 
   char *buf = "";
+  char *nbuf = "";
   int count[2];
   strnof_delim(str, '"', '"', count);
   //RL_EGG_DEBUG("idx[0]: %d\n", count[0]);
@@ -233,6 +272,7 @@ INLINE char *str_unquotd(char *str)
     return str;
   int even = count[0] - abs(count[0] - count[1]);
   char *token, *tmp, *rest;
+  bool need_free = true;
   token = NULL;
   rest = NULL;
   tmp = strdupa(str);
@@ -248,13 +288,21 @@ INLINE char *str_unquotd(char *str)
   if (token == NULL)
     return str;
   //RL_EGG_DEBUG("token: %s\n", token);
-  buf = concat(buf, token, NULL);
+  buf = memsafe_concat(buf, token, NULL);
 
   while ((token = strtok_r(NULL, "\"", &rest)) != NULL) {
     //RL_EGG_DEBUG("token (while): %s\n", token);
     //RL_EGG_DEBUG("even (while): %d\n", even);
     if (even % 2 == 1) {
-      buf = concat(buf, token, NULL);
+      if (need_free) {
+	nbuf = memsafe_concat(buf, token, NULL);
+	free(buf);
+	need_free = false;
+      } else {
+	buf = memsafe_concat(nbuf, token, NULL);
+	free(nbuf);
+	need_free = true;
+      }
       --even;
     } else {
       ++even;
@@ -632,20 +680,30 @@ char *gnu_history_entry(int ind, int time)
 char *gnu_history_list() /* may look a bit messy, but it seems to work great ;D */
 {
   /* should be free'd by Chicken Scheme */
-  char *list = "";
+  char *list_0 = "";
+  char *list_1 = "";
+  bool need_free = true;
 
   HIST_ENTRY **hist_list = history_list();
   int idx;
 
   if (hist_list == NULL)
     return NULL;
-  list = concat(list, hist_list[0]->line, "\n", NULL);
+  list_0 = memsafe_concat("", hist_list[0]->line, "\n", NULL);
   RL_EGG_DEBUG("buf@%d: %s\n", __LINE__, list);
 
   for (idx = 1; idx < history_length; ++idx) {
-    list = concat(list, hist_list[idx]->line, "\n", NULL);
+    if (need_free) {
+      list_1 = memsafe_concat(list_0, hist_list[idx]->line, "\n", NULL);
+      free(list_0);
+      need_free = false;
+    } else {
+      list_0 = memsafe_concat(list_1, hist_list[idx]->line, "\n", NULL);
+      free(list_1);
+      need_free = true;
+    }
   }
-  return list;
+  return need_free ? list_0 : list_1;
 }
 
 int gnu_history_list_max_length()
