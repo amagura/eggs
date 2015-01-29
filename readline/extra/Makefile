@@ -45,7 +45,8 @@ clean: tidy
 	  $(RM) test; \
 	  $(RM) units; \
 	  cd ../trunk ;\
-	  for _f in *.so *.html; do $(RM) "$$_f"; done
+	  for _f in *.so *.html; do $(RM) "$$_f"; done; \
+	  $(RM) valgrind
 
 tidy:
 	cd $(mydir); \
