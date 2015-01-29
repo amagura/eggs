@@ -112,10 +112,10 @@
 		  history-search-forward-starts-with
 		  history-search-from-position
 
-		  history-use-timestamps
+		  history-write-timestamps
 
 		  history-stifle
-		  history-stifled?
+		  history-stifled
 
 		  install-history-file
 
@@ -298,7 +298,7 @@
 (define history-list-max-entries
   (foreign-lambda int "gnu_history_list_max_length"))
 
-(define (history-use-timestamps yes-no)
+(define (history-write-timestamps yes-no)
   ((foreign-lambda void "gnu_history_use_timestamps" bool) yes-no))
 
 (define (history-list-size)
@@ -309,7 +309,7 @@
       ((foreign-lambda void "stifle_history" int) max-entries)
       ((foreign-lambda int "unstifle_history"))))
 
-(define history-stifled?
+(define history-stifled
   (let ((return-v ((foreign-lambda int "history_is_stifled"))))
     (or (and
 	 (= 0 return-v)
@@ -329,8 +329,10 @@ it's supposed to take a string of history entries and transform it like so:
 
 ;; (gnu-history-position) -> current history position within history_list
 ;; (set! (history-position) pos) -> sets the current history position
-(define (history-position)
-  ((foreign-lambda int "where_history")))
+(define (history-position #!optional pos)
+  (if pos
+      ((foreign-lambda int "history_set_pos" int) pos)
+      ((foreign-lambda int "where_history"))))
 (set! (setter history-position) (lambda (pos) ((foreign-lambda bool "history_set_pos" int) pos)))
 
 ;; Useful...

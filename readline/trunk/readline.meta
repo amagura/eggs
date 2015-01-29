@@ -5,6 +5,7 @@
  (category io)
  (doc-from-wiki)
  (license "GPL-2")
+ (depends regex)
  (test-depends test dummy-user)
  (maintainer "Alexej Magura")
  (author "Tony Garnock-Jones")

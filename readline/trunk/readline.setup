@@ -28,13 +28,6 @@
                            (error 'compile "compilation error")))))
          (compile args ...))))))
 
-(define rl-extra-header
-  (if (and
-        (find-library "bsd" "strlcat")
-        (find-header "bsd/string.h"))
-    "-C -DHAVE_LIBBSD=1"
-    ""))
-
 (define rl-extra-cflags
   (string-append
    "-C -D_GNU_SOURCE=1"))
@@ -44,7 +37,7 @@
     ((_ libs)
      (and (print "trying: " libs)
           (handle-exceptions e #f
-            (compile/error readline-test.scm ,rl-extra-cflags ,rl-extra-header ,libs))
+            (compile/error readline-test.scm ,rl-extra-cflags ,libs))
 	  libs))))
 
 ;(define curry (lambda (f . c) (lambda x (apply f (append c x)))))
@@ -79,20 +72,16 @@
         "For more information, please consult "
         "http://wiki.call-cc.org/egg/readline#installation-problems\n"))))
 
-(if (string=? "" rl-extra-header)
-  #f
-  (set! rl-extralib (string-append rl-extralib " -lbsd")))
-
-(compile -s -O2 readline.scm ,rl-extra-cflags ,rl-extralib ,rl-extra-header)
+(compile -s -O2 readline.scm ,rl-extra-cflags ,rl-extralib)
 
 (compile -c -O2 -d0 -j readline readline.scm
-         -o readline-static.o -unit readline ,rl-extra-cflags ,rl-extralib ,rl-extra-header)
+         -o readline-static.o -unit readline ,rl-extra-cflags ,rl-extralib)
 
 (compile -s -O2 -d0 readline.import.scm)
 
 (install-extension
     'readline
     '("readline.so" "readline.import.so" "readline-static.o")
-    `((version           "2.4")
+    `((version           "3.0b1")
       (static            "readline-static.o")
       (static-options    ,rl-extralib)))

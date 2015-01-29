@@ -10,7 +10,7 @@ valgrind := /usr/bin/env valgrind
 VALGRIND = --show-leak-kinds=all --leak-check=full --
 LINT = -nullassign -immediatetrans +trytorecover +gnuextensions +posixlib
 CHK_CC := /usr/bin/chicken-install
-version := $$(grep version "$(mydir)/../trunk/readline.setup" | grep -P '[0-9.]+' -o)
+version := $$(grep version "$(mydir)/../trunk/readline.setup" | grep -P '[0-9.abc]+' -o)
 
 .PHONY: build kill
 all: kill build
