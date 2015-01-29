@@ -24,7 +24,9 @@
             (readline#add-history))
 
 (test-assert "(readline#history-current-entry) == (last (readline#history-list))"
-             (string=? (readline#history-current-entry) (last (readline#history-list))))
+             (string=? (readline#history-current-entry)
+		       (last (readline#history-list))))
+(display (reverse (readline#history-list))) (newline)
 
 (readline#add-history "hello")
 (readline#add-history "blue")
@@ -38,7 +40,7 @@
 
 #|
 ;; needs epoch, I think.
-(test "(readline#add-history-time 
+(test "(readline#add-history-time
 
 (test-assert "(readline#search-history-backward \"hello\") == '(match: (line: STRING time: STRING or #f) index: INTEGER)"
              (let* ((result (readline#history-search-backward "hello"))
