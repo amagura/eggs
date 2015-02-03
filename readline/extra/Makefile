@@ -33,7 +33,7 @@ check: kill build
 	cd $(mydir)/../trunk; \
 	  csi -n tests/run.scm
 	cd $(mydir)/../extra; \
-	  STARTDIR=$(mydir) ./test.bats;
+	  STARTDIR=. ./test.bats;
 
 sure: kill
 	cd $(mydir)/../trunk; \
@@ -66,6 +66,7 @@ release: sure doc clean
 	  svn copy trunk tags/$(version) ;\
 	  cd tags/$(version) ;\
 	  $(RM) Makefile
+
 test-release: sure doc
 	cd $(mydir); \
 	  cd ..; \

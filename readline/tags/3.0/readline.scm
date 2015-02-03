@@ -5,7 +5,7 @@
 ;
 ; Copyright (c) 2002 Tony Garnock-Jones
 ; Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
-; Copyright (c) 2014 Alexej Magura (most of the history functions)
+; Copyright (c) 2014 Alexej Magura (toplevel commands and readline#session)
 ;
 ; This program is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -71,14 +71,13 @@
 
 ;;;; Toplevel Commands
 
-(module readline (readline
-
+(module readline (
 		  ;; variables
-		  load-history
-		  save-history
+		  session
+		  version
 
 		  ;; functions
-		  record-history
+		  readline
 		  make-readline-port
 		  clear-history
 		  %signal-cleanup
@@ -87,53 +86,32 @@
 		  append-history
 		  truncate-history
 
-		  add-history
-		  add-history-timestamp
+		  %add-history%
+		  %remove-history%
 
 		  set-bounce-ms
 
 		  history-newlines
 		  history-list
-		  history-list-length
-		  history-list-max-entries
-		  history-list-size
-
-		  history-get-entry
-		  history-current-entry
-		  history-previous-entry
-		  history-next-entry
 		  history-position
 
-		  history-search
-		  history-search-forward
-		  history-search-backward
-		  history-search-starts-with
-		  history-search-backward-starts-with
-		  history-search-forward-starts-with
-		  history-search-from-position
+;		  history-search
+;		  history-search-forward
+;		  history-search-backward
+;		  history-search-starts-with
+;		  history-search-backward-starts-with
+;		  history-search-forward-starts-with
+;		  history-search-from-position
+		  last-history-line
+		  eval-last-history-line
 
-		  history-write-timestamps
-
-		  history-stifle
-		  history-stifled
+;		  history-stifle
+;		  history-stifled
 
 		  install-history-file
 
-		  legacy-bindings
-		  use-legacy-bindings
 		  parse-and-bind
 		  completions
-
-		  ;insert-text ; FIXME may have no effect
-		  ;delete-text ; FIXME may have no effect
-		  ;copy-text ; FIXME may have no effect
-		  ;kill-text ; FIXME may have no effect
-		  ;stuff-char ; FIXME may have no effect
-
-		  ;redisplay ; FIXME may have no effect
-		  ;crlf ; FIXME may have no effect
-		  ;replace-line ; FIXME may have no effect
-
 		  variables
 		  )
 (import scheme chicken foreign ports data-structures)
@@ -160,24 +138,53 @@
 		 (and (or (= set 0) (= set 1) (= set -1)) set)
 		 0))
       ((foreign-lambda bool ,c-name int) set))))
+#|/////////////////////////////////|#
+;;;; Private Functions
+#|/////////////////////////////////|#
+(define-inline (setkv! kvlst key value)
+  (let ((kv (member key kvlst)))
+    (if kv
+	(set-car! (cdr kv) value))))
 
-(define (record-history #!optional set)
-  (var-fn "clear_hist" set))
+(define-inline (getkv kvlst key #!optional default)
+  (let ((kv (member key kvlst)))
+    (if kv
+	(cadr kv)
+	default)))
+#|/////////////////////////////////|#
+;;;; Public Variables
+#|/////////////////////////////////|#
+(define session '(#:load-history-file #t
+		  #:save-history-on-exit #t
+		  #:record-history #t
+		  #:verify-history-expansions #f))
+(define version
+  "3.0")
+#|/////////////////////////////////|#
+;;;; Private Variables
+#|/////////////////////////////////|#
 
-(var-set 'record-history "clear_hist")
+;; get access to the quoting flag
+(define-foreign-variable is-quoted? int "rl_completion_quote_character")
+(define-foreign-variable filename-completion int "rl_filename_completion_desired")
 
-(define (skip #!optional set)
-  (var-fn "skip_ent" set))
+#|/////////////////////////////////|#
+;;;; Private C->Scheme Functions
+#|/////////////////////////////////|#
+(define-inline (.readline. toplevel-prompt mid-expression-prompt #!optional add-to-history)
+  ((foreign-safe-lambda c-string "gnu_readline_readline" c-string c-string bool)
+   toplevel-prompt mid-expression-prompt add-to-history))
 
-(var-set 'skip "skip_ent")
+(define-inline (.number->bool. num)
+  ((foreign-lambda bool "int_to_bool" int) num))
 
-(define load-history #t)
-(define save-history #t)
+#|/////////////////////////////////|#
+;;;; Public C->Scheme Functions
+#|/////////////////////////////////|#
 
-;; Various C funcs
 
-(define readline
-  (foreign-safe-lambda c-string "gnu_readline_readline" c-string c-string))
+(define (readline toplevel-prompt mid-expression-prompt)
+  (.readline. toplevel-prompt mid-expression-prompt (not (getkv session #:record-history))))
 
 (define %signal-cleanup
   (foreign-lambda void "gnu_readline_signal_cleanup"))
@@ -203,50 +210,15 @@
 (define truncate-history
   (foreign-lambda int "history_truncate_file" c-string int))
 
-(define add-history
-  (foreign-lambda void "add_history" c-string))
-
-(define add-history-timestamp
-  (foreign-lambda void "add_history_time" c-string))
-
 (define history-newlines
   (foreign-lambda int "gnu_history_new_lines"))
 
-(define (history-current-entry #!optional time)
-  (if time
-      (list
-       (cons 'line
-	     ((foreign-lambda c-string "gnu_history_entry" int int) 0 0))
-       (cons 'time
-	     ((foreign-lambda c-string "gnu_history_entry" int int) 0 1)))
-      ((foreign-lambda c-string "gnu_history_entry" int int) 0 0)))
+(define %add-history%
+  (foreign-lambda void "add_history" c-string))
 
-(define (history-previous-entry #!optional time)
-  (if time
-      (list
-       (cons 'line
-	     ((foreign-lambda c-string "gnu_history_entry" int int) -1 0))
-       (cons 'time
-	     ((foreign-lambda c-string "gnu_history_entry" int int) -1 1)))
-      ((foreign-lambda c-string "gnu_history_entry" int int) -1 0)))
-
-(define (history-next-entry #!optional time)
-  (if time
-      (list
-       (cons 'line
-	     ((foreign-lambda c-string "gnu_history_entry" int int) 1 0))
-       (cons 'time
-	     ((foreign-lambda c-string "gnu_history_entry" int int) 1 1)))
-      ((foreign-lambda c-string "gnu_history_entry" int int) 1 0)))
-
-(define (history-get-entry index #!optional time)
-  (if time
-      (list
-       (cons 'line
-	     ((foreign-lambda c-string "gnu_history_get" int int) index 0))
-       (cons 'time
-	     ((foreign-lambda c-string "gnu_history_get" int int) index 1)))
-      ((foreign-lambda c-string "gnu_history_get" int int) index 0)))
+(define (%remove-history% #!optional pos)
+  (let ((pos (or pos (history-position))))
+    ((foreign-lambda void "safely_remove_history" int) pos)))
 
 ;; (gnu-history-search "string" -1) -> search through previous entries
 ;; (gnu-history-search "string" 0+) -> search through subsequent entries.
@@ -254,67 +226,19 @@
 ;; xxx use `(get-keyword)' to access offset:, match:, and index:
 ;; xxx `index:' corresponds to the history-position within history_list of the match
 
-(define (history-search-starts-with string direction)
-  (let ((success
-	 ((foreign-lambda int "history_search_prefix" c-string int) string direction)))
-    (if (= success -1)
-	#f
-	(list (cons 'match
-		    (list (cons 'line (history-current-entry))
-			  (cons 'time (history-current-entry #t))))
-	      (cons 'index (history-position))))))
-
-(define (history-search-from-position string direction position)
-  (let ((result
-	 ((foreign-lambda int "history_search_pos" c-string int int) string direction position)))
-    (if (= result -1)
-	#f
-	result)))
-
-(define (history-search string direction)
-  (let ((offset
-	 ((foreign-lambda int "history_search" c-string int) string direction)))
-    (if (= offset -1)
-	#f
-	(list (cons 'match
-		    (list (cons 'line (history-current-entry))
-			  (cons 'time (history-current-entry #t))
-			  (cons 'offset offset)))
-	      (cons 'index (history-position))))))
-
-(define (history-search-backward string)
-  (history-search string -1))
-(define (history-search-forward string)
-  (history-search string 1))
-
-(define (history-search-backward-starts-with string)
-  (history-search-starts-with string -1))
-(define (history-search-forward-starts-with string)
-  (history-search-starts-with string 1))
-
 (define history-list-length
   (foreign-lambda int "gnu_history_list_length"))
 
-(define history-list-max-entries
-  (foreign-lambda int "gnu_history_list_max_length"))
+(define (last-history-line #!optional as-string script)
+  (let ((cmd-string ((foreign-lambda c-string "last_history_line" int int) 0 (if script 1 0))))
+    (if as-string
+	cmd-string
+	(##sys#read-from-string cmd-string))))
 
-(define (history-write-timestamps yes-no)
-  ((foreign-lambda void "gnu_history_use_timestamps" bool) yes-no))
-
-(define (history-list-size)
-  ((foreign-lambda size_t "history_total_bytes")))
-
-(define (history-stifle #!optional max-entries)
-  (if (integer? max-entries)
-      ((foreign-lambda void "stifle_history" int) max-entries)
-      ((foreign-lambda int "unstifle_history"))))
-
-(define history-stifled
-  (let ((return-v ((foreign-lambda int "history_is_stifled"))))
-    (or (and
-	 (= 0 return-v)
-	 (cons #f return-v))
-	(cons #t return-v))))
+(define (eval-last-history-line #!optional script)
+  (if (getkv session #:verify-history-expansions)
+      ((foreign-lambda void "insert_last_history_line" int int int) 1 (if script 1 0) 0)
+      ((foreign-lambda void "run_last_history_line" int int) 1 (if script 1 0))))
 
 #| the underlying c-function works, but the scheme binding to said function is buggy.
 I just can't seem to get this function to do what I want it to do. :(
@@ -323,9 +247,9 @@ it's supposed to take a string of history entries and transform it like so:
 "a\nb\nc\nd" -> ((1 . "a") (2 . "b") (3 . "c") (4 . "d"))
 
 |#
-;; FIXME, `(history-list)' is always appended to the list
+
 (define (history-list)
-  `(,@(string-split ((foreign-lambda c-string* "gnu_history_list")))))
+  `(,@(string-split ((foreign-lambda c-string* "gnu_history_list")) "\n")))
 
 ;; (gnu-history-position) -> current history position within history_list
 ;; (set! (history-position) pos) -> sets the current history position
@@ -343,17 +267,15 @@ it's supposed to take a string of history entries and transform it like so:
 					; XXX however, it doesn't work with LISP.
 					;(parse-and-bind "set blink-matching-paren on")
 
-;; get access to the quoting flag
-(define-foreign-variable is-quoted? int "rl_completion_quote_character")
-(define-foreign-variable filename-completion int "rl_filename_completion_desired")
 
 ;; Handler for the command history file
 (define (install-history-file #!optional homedir filename nlines)
-  (let* ((fname (or filename "/.csi_history"))
+  (let* ((fname (or filename ".csi_history"))
 	 (histfile
 	  (if homedir
 	      (string-append homedir "/" fname)
 	      (string-append (or (get-environment-variable "HOME") ".")
+			     "/"
 			     fname))))
     (define (hook param)
       (param (let ((next (param)))
@@ -361,14 +283,14 @@ it's supposed to take a string of history entries and transform it like so:
 		 ;(gnu-readline-write-history filename)
 		 (and (not (file-exists? histfile))
 		      (file-close (file-open histfile (+ open/append open/creat open/excl) (+ perm/irusr perm/iwusr))))
-		 (and save-history (append-history histfile))
+		 (and (getkv session #:save-history-on-exit) (append-history histfile))
 		 (apply next args)))))
     (if (pair? nlines)
 	(set! nlines (car nlines))
 	(set! nlines 1000))
     (if nlines
 	(truncate-history histfile nlines))
-    (and load-history (read-history histfile))
+    (and (getkv session #:load-history-file) (read-history histfile))
     (hook exit-handler)
     (hook implicit-exit-handler)))
 
@@ -432,28 +354,41 @@ it's supposed to take a string of history entries and transform it like so:
 (define legacy-bindings
   '((gnu-readline-readline
      readline#readline)
+
     (%gnu-readline-signal-cleanup
      readline#%signal-cleanup)
+
     (gnu-readline-clear-history
      readline#clear-history)
+
     (gnu-readline-read-history
      readline#read-history)
+
     (gnu-readline-write-history
      readline#write-history)
+
     (gnu-readline-append-history
      readline#append-history)
+
     (gnu-readline-truncate-history
      readline#truncate-history)
+
     (gnu-history-new-lines
      readline#history-newlines)
+
     (gnu-readline-parse-and-bind
      readline#parse-and-bind)
+
     (gnu-readline-set-bounce-ms
      readline#set-bounce-ms)
+
     (gnu-history-install-file-manager
-     readline#install-history-file)
+     (lambda (filename . nlines)
+       (readline#install-history-file #f filename nlines)))
+
     (make-gnu-readline-port
      readline#make-readline-port)
+
     (gnu-readline-completions
      readline#completions)
     ))
@@ -629,45 +564,9 @@ it's supposed to take a string of history entries and transform it like so:
 			 ",?" ",p" ",d" ",du" ",dur" ",q" ",l" ",ln" ",r"
 			 ",s" ",tr" ",utr" ",t" ",x"
 					; rl commands
-			 ",rl-clh" ",rl-erh" ",rl-drh" ",rl-esh" ",rl-dsh"
-			 ",rl-skp" ",rl-rd"
+			 ",rl-clh" ",rl-savhist" ",rl-rec" ",rl-!!"
+			 ",rl-rd" ",rl-emacs" ",rl-vi"
 			 ))
-
-;;;; Text Modification bindings
-;;; potentially useless bindings as-is
-
-;; returns number of chars inserted.
-(define (insert-text text)
-  ((foreign-lambda int "rl_insert_text" c-string) text))
-
-;; returns number of chars deleted.
-(define (delete-text start end)
-  ((foreign-lambda int "rl_delete_text" int int) start end))
-
-;; returns a copy of text between start and end
-(define (copy-text start end)
-  ((foreign-lambda c-string "rl_copy_text" int int) start end))
-
-(define (kill-text start end)
-  ((foreign-lambda int "rl_kill_text" int int) start end))
-
-;;;; Character input bindings
-
-(define (stuff-char char)
-  ((foreign-lambda bool "rl_stuff_char" int) char))
-
-;;;; Redisplay bindings
-
-(define (redisplay)
-  ((foreign-lambda void "rl_redisplay")))
-
-(define (crlf)
-  (not ((foreign-lambda bool "rl_crlf"))))
-
-;;;; Utility bindings
-
-(define (replace-line text #!optional clear-undo?)
-  ((foreign-lambda void "rl_replace_line" c-string int) text (or clear-undo? 0)))
 
 (define (variables #!optional inputrc-format?)
   ((foreign-lambda void "rl_variable_dumper" int) (or inputrc-format? 0)))
@@ -680,41 +579,34 @@ it's supposed to take a string of history entries and transform it like so:
 
 (toplevel-command 'rl-clh (lambda ()
 			    (readline#clear-history))
-		  (pad ",rl-clh" "Clear current session history -- readline egg"))
+		  (pad ",rl-clh" "Clear current session history"))
 
-(toplevel-command 'rl-erh (lambda ()
-			   (and (readline#record-history)
-			       (readline#record-history 0)))
-		  (pad ",rl-erh" " Enable current session history -- readline egg"))
+(toplevel-command 'rl-savhist (lambda ()
+				(let ((value (getkv readline#session #:save-history-on-exit)))
+				  (and (setkv! readline#session #:save-history-on-exit (not value))
+				       (not value))))
+		  ",rl-savhist       Enable/disable saving history session on exit (enabled by default)")
 
-(toplevel-command 'rl-drh (lambda ()
-			   (or (readline#record-history)
-				(readline#record-history 1)))
-		  (pad ",rl-drh" " Disable current session history -- readline egg"))
-
-(toplevel-command 'rl-esh (lambda ()
-			     (or readline#save-history
-				 (set! readline#save-history #t)))
-		  (pad ",rl-esh" "Enable saving current session history for future sessions -- readline egg"))
-
-(toplevel-command 'rl-dsh (lambda ()
-			    (and readline#save-history
-				 (set! readline#save-history #f)))
-		  (pad ",rl-dsh" "Disable saving current session history for future sessions -- readline egg"))
-
-(toplevel-command 'rl-skp (lambda ()
-			    (if (readline#skip)
-				(readline#skip 0)
-				(readline#skip 1)))
-		  (pad ",rl-skp" "Toggle removal of subsequent lines from history -- readline egg"))
+(toplevel-command 'rl-rec (lambda ()
+			    (let ((value (getkv readline#session #:record-history)))
+			      (and (setkv! readline#session #:record-history (not value))
+				   (not value))))
+		  (pad ",rl-rec" "Enable/disable recording history for this session (enabled by default)"))
 
 (toplevel-command 'rl-rd (lambda ()
 			   (readline#read-history (regex#string-substitute
 						   "~"
 						   (get-environment-variable "HOME")
 						   (read-line))))
+		  (pad ",rl-rd" " Read history file into current session"))
 
-		  (pad ",rl-rd" "Read history file into current session -- readline egg"))
+(toplevel-command 'rl-!! readline#eval-last-history-line)
+
+(toplevel-command 'rl-vi (lambda ()
+			   (readline#parse-and-bind "set editing-mode vi")))
+
+(toplevel-command 'rl-emacs (lambda ()
+			      (readline#parse-and-bind "set editing-mode emacs")))
 
 ; TODO add rl-history-grep
 ;(toplevel-command 'rl-hgrp

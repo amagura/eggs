@@ -30,7 +30,9 @@
 
 (define rl-extra-cflags
   (string-append
-   "-C -D_GNU_SOURCE=1"))
+   "-C -D_GNU_SOURCE=1"
+   " -C -std=gnu99"
+   ))
 
 (define-syntax check-rllibs
   (syntax-rules ()
@@ -82,6 +84,6 @@
 (install-extension
     'readline
     '("readline.so" "readline.import.so" "readline-static.o")
-    `((version           "3.0b1")
+    `((version           "3.0")
       (static            "readline-static.o")
       (static-options    ,rl-extralib)))

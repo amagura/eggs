@@ -1,4 +1,5 @@
 ;; vim:ft=scheme:
 (use readline symbol-utils)
-(or (and (unbound? 'readline#use-legacy-bindings) (current-input-port (readline#make-gnu-readline-port)))
-    (current-input-port (readline#make-readline-port)))
+(if (unbound? 'readline#use-legacy-bingings)
+    (current-input-port (readline#make-readline-port))
+    (current-input-port (readline#make-gnu-readline-port)))
