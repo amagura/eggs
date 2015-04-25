@@ -5,7 +5,6 @@
  (category io)
  (doc-from-wiki)
  (license "GPL-2")
- (depends regex)
  (test-depends test kvlists)
  (maintainer "Alexej Magura")
  (author "Tony Garnock-Jones")

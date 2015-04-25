@@ -18,83 +18,27 @@
 // You should have received a copy of the GNU General Public License
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-
-#include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
 #include <sys/poll.h>
 #include <readline/readline.h>
 #include <readline/history.h>
-#include <stdbool.h>
 #include <errno.h>
+#include "common.h"
+
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE 1
+#endif
 #include <alloca.h>
-#include <stdarg.h>
-#include <limits.h>
-
-/* **** BEGIN ****
- * Macros *
- */
-#define RL_EGG_SYNC_SCM_HIST			\
-     do {					\
-	  previous_history();			\
-     } while(0);
-
-/* *** BEGIN ***
- * Conditional Macros *
- */
-#ifndef INLINE
-#if defined __GNUC__
-#define INLINE __inline__
-#else
-#define INLINE inline
-#endif
-#endif
-
-#ifndef __GNUC__
-#ifndef __attribute__
-#define __attribute__(x)
-#endif
-#endif
-
-#ifndef DEBUG
-#define DEBUG 0
-#endif
-
-#if DEBUG /* NOTE change this to 1 to enable debug messages */
-#define RL_EGG_STACK(format, ...)		\
-  do {						\
-    RL_EGG_BEGIN_TRACE;				\
-    RL_EGG_DEBUG((format), __VA_ARGS__);	\
-    RL_EGG_END_TRACE;				\
-  } while(0)
-
-#define RL_EGG_BEGIN_TRACE fprintf(stderr, "++ %s{%d}:\n\n", __FILE__, __LINE__)
-#define RL_EGG_END_TRACE fprintf(stderr, "\n-- %s %s `%s'\n\n", "In", "function", __FUNCTION__)
-#define RL_EGG_DEBUG(format, ...)		\
-  do {						\
-    fprintf(stderr, "%s", "\e[36m");		\
-    fprintf(stderr, (format), __VA_ARGS__);	\
-    fprintf(stderr, "%s", "\e[0m");		\
-  } while(0)
-#else
-#define RL_EGG_STACK(format, ...)
-#define RL_EGG_BEGIN_TRACE
-#define RL_EGG_END_TRACE
-#define RL_EGG_DEBUG(format, ...)
-#endif
-/* *** END ***
-   Macros
- */
+#include <string.h>
 
 static int gnu_readline_bounce_ms = 500;
 static int gnu_history_newlines = 0;
 static char *gnu_readline_buf = NULL;
 static bool rl_egg_clear = false;
 
-struct balance {
+static struct balance {
   int paren[3]; // 0 -> total, 1 -> open, 2 -> close
   int brace[3];
   int quote;
@@ -116,124 +60,17 @@ static struct gnu_readline_current_paren_color_t {
  *  ~ Alexej
  */
 
-char *memsafe_concat(const char *s1, ...) __attribute__ ((__sentinel__));
-
-char *memsafe_concat(const char *s1, ...)
-{
-  va_list args;
-  const char *s;
-  char *p, *result;
-  unsigned long l, m, n;
-
-  m = n = strlen(s1);
-  va_start(args, s1);
-  while ((s = va_arg(args, char *))) {
-    l = strlen(s);
-    if ((m += l) < l) break;
-  }
-  va_end(args);
-  if (s || m >= INT_MAX) return NULL;
-
-  result = (char *)malloc(m + 1);
-  if (!result) return NULL;
-
-  memcpy(p = result, s1, n);
-  p += n;
-  va_start(args, s1);
-  while ((s = va_arg(args, char *))) {
-    l = strlen(s);
-    if ((n += l) < l || n > m) break;
-    memcpy(p, s, l);
-    p += l;
-  }
-  va_end(args);
-  if (s || m != n || p != result + n) {
-    free(result);
-    return NULL;
-  }
-
-  *p = 0;
-  return result;
-}
-
-char *concat (const char *s1, ...)
-{
-     va_list ap;
-     size_t allocated = 8;
-     char *result = (char *) malloc (allocated);
-
-     if (result != NULL) {
-	  char *newp;
-	  char *tmp;
-	  const char *s;
-
-	  va_start (ap, s1);
-
-	  tmp = result;
-	  for (s = s1; s != NULL; s = va_arg (ap, const char *)) {
-	       size_t len = strlen (s);
-
-	       /* `s' is too big to fit into `result', resize `result' */
-	       if (tmp + len + 1 > result + allocated) {
-		    allocated = (allocated + len) * 2;
-		    newp = (char *) realloc (result, allocated);
-		    if (newp == NULL) {
-			 free (result);
-			 return NULL;
-		    }
-		    tmp = newp + (tmp - result);
-		    result = tmp;
-	       }
-	       tmp = mempcpy (tmp, s, len);
-	  }
-
-	  *tmp++ = '\0';
-
-	  newp = realloc (result, tmp - result);
-	  if (newp != NULL)
-	       result = newp;
-
-	  va_end (ap);
-     }
-     return result;
-}
-
-INLINE char peek_chr(char *cp, char *stringp, bool direct)
-{
-    if (direct) {
-    char next = '\0';
-    if (cp != &stringp[strlen(stringp) - 1]) {
-      next = *(++cp);
-      --cp;
-    } else {
-      next = *cp;
-    }
-    return next;
-  } else {
-    char prev = '\0';
-    if (cp != stringp) {
-      prev = *(--cp);
-      ++cp;
-    } else {
-      prev = *cp;
-    }
-    return prev;
-  }
-}
-
-INLINE int strnof_delim(char *str, char odelim, char cdelim, int count[2])
+static int strnof_delim(char *str, char odelim, char cdelim, int count[2])
 {
   memset(count, 0, sizeof(*count)*2);
-  RL_EGG_BEGIN_TRACE;
-  RL_EGG_DEBUG("str: %s\n", str);
+  COM_DBG("str: %s\n", str);
   char *cp = strchr(str, '\0');
-  RL_EGG_END_TRACE;
 
   if (cp == str)
     return 1;
 
   do {
-    if (cp != str && peek_chr(cp, str, false) == '\\')
+    if (cp != str && cpeek(cp, str, 0) == '\\')
       continue;
 
     if (*cp == cdelim) {
@@ -252,66 +89,57 @@ INLINE int strnof_delim(char *str, char odelim, char cdelim, int count[2])
     }
   }
 
-  RL_EGG_BEGIN_TRACE;
-  RL_EGG_DEBUG("open: %d\nclose: %d\n", count[0], count[1]);
-  RL_EGG_END_TRACE;
+  COM_DBG("open: %d\nclose: %d\n", count[0], count[1]);
   return 0;
 }
 
-INLINE char *str_unquotd(char *str)
+static char *str_unquotd(char *str)
 {
-  //RL_EGG_BEGIN_TRACE;
-  //RL_EGG_DEBUG("str: `%s'\n", str);
-  //RL_EGG_END_TRACE;
+     char *result = malloc(strlen(str) + 1);
+     int count[2];
+     strnof_delim(str, '"', '"', count);
 
-  char *buf = "";
-  char *nbuf = "";
-  int count[2];
-  strnof_delim(str, '"', '"', count);
-  //RL_EGG_DEBUG("idx[0]: %d\n", count[0]);
-  //RL_EGG_DEBUG("idx[1]: %d\n", count[1]);
+     if (count[0] == 0)
+	  return str;
+     int even = count[0] - abs(count[0] - count[1]);
+     char *token, *tmp, *rest;
+     bool need_free = true;
+     token = NULL;
+     rest = NULL;
+     tmp = strdupa(str);
 
-  if (count[0] == 0)
-    return str;
-  int even = count[0] - abs(count[0] - count[1]);
-  char *token, *tmp, *rest;
-  bool need_free = true;
-  token = NULL;
-  rest = NULL;
-  tmp = strdupa(str);
-
-  if (tmp == NULL) {
+     if (tmp == NULL) {
 #if DEBUG
-    perror(__FUNCTION__);
+	  perror(__FUNCTION__);
 #endif
-    return NULL;
-  }
+	  return NULL;
+     }
 
-  token = strtok_r(tmp, "\"", &rest);
-  if (token == NULL)
-    return str;
-  //RL_EGG_DEBUG("token: %s\n", token);
-  buf = memsafe_concat(buf, token, NULL);
+     token = strtok_r(tmp, "\"", &rest);
+     if (token == NULL)
+	  return str;
+     COM_DBG("token: %s\n", token);
+     catl(buf, token);
 
-  while ((token = strtok_r(NULL, "\"", &rest)) != NULL) {
-    //RL_EGG_DEBUG("token (while): %s\n", token);
-    //RL_EGG_DEBUG("even (while): %d\n", even);
-    if (even % 2 == 1) {
-      if (need_free) {
-	nbuf = memsafe_concat(buf, token, NULL);
-	free(buf);
-	need_free = false;
-      } else {
-	buf = memsafe_concat(nbuf, token, NULL);
-	free(nbuf);
-	need_free = true;
-      }
-      --even;
-    } else {
-      ++even;
-    }
-  }
-  return buf;
+     while ((token = strtok_r(NULL, "\"", &rest)) != NULL) {
+	  //RL_EGG_DEBUG("token (while): %s\n", token);
+	  //RL_EGG_DEBUG("even (while): %d\n", even);
+	  if (even % 2 == 1) {
+	       if (need_free) {
+		    nbuf = memsafe_concat(buf, token, NULL);
+		    free(buf);
+		    need_free = false;
+	       } else {
+		    buf = memsafe_concat(nbuf, token, NULL);
+		    free(nbuf);
+		    need_free = true;
+	       }
+	       --even;
+	  } else {
+	       ++even;
+	  }
+     }
+     return buf;
 }
 
 INLINE void clear_parbar(char token)

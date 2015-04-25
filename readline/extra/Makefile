@@ -2,7 +2,7 @@ mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
 mydir := $(abspath $(lastword $(dir $(MAKEFILE_LIST))))
 cwd := $(notdir $(patsubst %/,%,$(dir $(mkfile_path))))
 
-C_SRC = $(filter %-egg.c, $(wildcard $(mydir)/../trunk/*.c))
+C_SRC = $(filter %-egg.c, $(wildcard $(mydir)/../trunk/*.c)) common.c common.h
 
 splint := /usr/bin/env splint
 cppcheck := /usr/bin/env cppcheck
@@ -45,6 +45,7 @@ clean: tidy
 	  $(RM) test; \
 	  $(RM) units; \
 	  cd ../trunk ;\
+	  $(RM) common.o ;\
 	  for _f in *.so *.html; do $(RM) "$$_f"; done; \
 	  $(RM) valgrind
 

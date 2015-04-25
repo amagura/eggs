@@ -117,7 +117,7 @@
 		  variables
 		  )
 (import scheme chicken foreign ports data-structures)
-(use posix regex)
+(use posix irregex)
 
 #>
 #include "readline-egg.c"
@@ -622,10 +622,10 @@ it's supposed to take a string of history entries and transform it like so:
 		  (pad ",rl-rec" "Enable/disable recording history for this session (enabled by default)"))
 
 (toplevel-command 'rl-rd (lambda ()
-			   (readline#read-history (regex#string-substitute
+			   (readline#read-history (irregex-replace/all
 						   "~"
-						   (get-environment-variable "HOME")
-						   (read-line))))
+						   (read-line)
+						   (get-environment-variable "HOME"))))
 		  (pad ",rl-rd" " Read history file into this session"))
 
 (toplevel-command 'rl-!! readline#eval-last-history-line)
