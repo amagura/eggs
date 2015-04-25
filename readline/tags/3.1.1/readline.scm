@@ -161,7 +161,7 @@
 		  #:save-history-on-exit #t
 		  #:record-history #t
 		  #:verify-history-expansions #f))
-(define version "3.1")
+(define version "3.1.1")
 #|/////////////////////////////////|#
 ;;;; Private Variables
 #|/////////////////////////////////|#
