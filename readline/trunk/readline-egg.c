@@ -42,23 +42,6 @@
 	  previous_history();			\
      } while(0);
 
-/* *** BEGIN ***
- * Conditional Macros *
- */
-#ifndef INLINE
-#if defined __GNUC__
-#define INLINE __inline__
-#else
-#define INLINE inline
-#endif
-#endif
-
-#ifndef __GNUC__
-#ifndef __attribute__
-#define __attribute__(x)
-#endif
-#endif
-
 #ifndef DEBUG
 #define DEBUG 0
 #endif
@@ -116,88 +99,68 @@ static struct gnu_readline_current_paren_color_t {
  *  ~ Alexej
  */
 
-char *memsafe_concat(const char *s1, ...) __attribute__ ((__sentinel__));
-
-char *memsafe_concat(const char *s1, ...)
+static size_t concatl(char *buf, size_t bufsiz, const char *s1, ...)
 {
-  va_list args;
-  const char *s;
-  char *p, *result;
-  unsigned long l, m, n;
+     va_list args;
+     const char *s = NULL;
+     char *p, *tmp;
+     unsigned long ldx, mdx, ndx;
+     size_t used = 0;
 
-  m = n = strlen(s1);
-  va_start(args, s1);
-  while ((s = va_arg(args, char *))) {
-    l = strlen(s);
-    if ((m += l) < l) break;
-  }
-  va_end(args);
-  if (s || m >= INT_MAX) return NULL;
-
-  result = (char *)malloc(m + 1);
-  if (!result) return NULL;
-
-  memcpy(p = result, s1, n);
-  p += n;
-  va_start(args, s1);
-  while ((s = va_arg(args, char *))) {
-    l = strlen(s);
-    if ((n += l) < l || n > m) break;
-    memcpy(p, s, l);
-    p += l;
-  }
-  va_end(args);
-  if (s || m != n || p != result + n) {
-    free(result);
-    return NULL;
-  }
-
-  *p = 0;
-  return result;
-}
-
-char *concat (const char *s1, ...)
-{
-     va_list ap;
-     size_t allocated = 8;
-     char *result = (char *) malloc (allocated);
-
-     if (result != NULL) {
-	  char *newp;
-	  char *tmp;
-	  const char *s;
-
-	  va_start (ap, s1);
-
-	  tmp = result;
-	  for (s = s1; s != NULL; s = va_arg (ap, const char *)) {
-	       size_t len = strlen (s);
-
-	       /* `s' is too big to fit into `result', resize `result' */
-	       if (tmp + len + 1 > result + allocated) {
-		    allocated = (allocated + len) * 2;
-		    newp = (char *) realloc (result, allocated);
-		    if (newp == NULL) {
-			 free (result);
-			 return NULL;
-		    }
-		    tmp = newp + (tmp - result);
-		    result = tmp;
-	       }
-	       tmp = mempcpy (tmp, s, len);
-	  }
-
-	  *tmp++ = '\0';
-
-	  newp = realloc (result, tmp - result);
-	  if (newp != NULL)
-	       result = newp;
-
-	  va_end (ap);
+     mdx = ndx = strlen(s1);
+     va_start(args, s1);
+     while ((s = va_arg(args, char *))) {
+          ldx = strlen(s);
+          if ((mdx += ldx) < ldx) break;
      }
-     return result;
-}
+     va_end(args);
+     if (s || mdx >= INT_MAX) return bufsiz;
 
+#if defined(__cplusplus)
+     tmp = (char *)malloc(mdx + 1);
+#else
+     tmp = malloc(mdx + 1);
+#endif
+     if (!tmp) return bufsiz;
+     bzero(tmp, mdx + 1);
+     bzero(buf, mdx + 1);
+
+     p = tmp;
+     p = mempcpy(p, (char *)s1, ndx);
+
+     used += ndx;
+
+     va_start(args, s1);
+     while ((s = va_arg(args, char *))) {
+          ldx = strlen(s);
+          if ((ndx += ldx) < ldx || ndx > mdx) break;
+          p = mempcpy(p, (char *)s, ldx);
+          used += ldx;
+     }
+     va_end(args);
+     if (s || mdx != ndx || p != tmp + ndx) {
+          free(tmp);
+          return bufsiz;
+     }
+
+     *p = '\0';
+     /* NOTE it's so easy to forget, but in C, arrays start at 0.
+      * I know it may sound silly to say that I forget this, but I do.
+      * Because of this, a pointer at position 255 is really at position
+      * 256, because the pointer's start position is 0; not 1.
+      * This is why, if you were to assign `*p' like so:
+      * *++p = '\0'; it would result in an error: because position 256 is
+      * outside of the malloc'd memory address. */
+     ++used;
+
+     memcpy(buf, tmp, (used > bufsiz ? bufsiz : used));
+     free(tmp);
+     return bufsiz - used;
+}
+#undef catl
+#define catl(...) (concatl(__VA_ARGS__, (void *)NULL));
+
+static char cpeek(char *wp, char *str, short fwd)
 INLINE char peek_chr(char *cp, char *stringp, bool direct)
 {
     if (direct) {
