@@ -121,6 +121,33 @@
 
 #>
 #include "readline-egg.c"
+
+C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
+{
+  int i;
+  C_word
+    sym,
+    bucket = C_u_i_car(pos);
+
+  if(!C_truep(bucket)) return C_SCHEME_FALSE; /* end already reached */
+  else i = C_unfix(bucket);
+
+  bucket = C_u_i_cdr(pos);
+
+  while(bucket == C_SCHEME_END_OF_LIST) {
+    if(++i >= stable->size) {
+      C_set_block_item(pos, 0, C_SCHEME_FALSE);        /* no more buckets */
+      return C_SCHEME_FALSE;
+    }
+    else bucket = stable->table[ i ];
+  }
+
+  sym = C_block_item(bucket, 0);
+  C_set_block_item(pos, 0, C_fix(i));
+  C_mutate2(&C_u_i_cdr(pos), C_block_item(bucket, 1));
+  return sym;
+}
+
 <#
 
 ;; Initialise (note the extra set of parens)
@@ -161,7 +188,7 @@
 		  #:save-history-on-exit #t
 		  #:record-history #t
 		  #:verify-history-expansions #f))
-(define version "3.1")
+(define version "4.1.0")
 #|/////////////////////////////////|#
 ;;;; Private Variables
 #|/////////////////////////////////|#
@@ -635,6 +662,5 @@ it's supposed to take a string of history entries and transform it like so:
 
 (toplevel-command 'rl-emacs (lambda ()
 			      (readline#parse-and-bind "set editing-mode emacs")))
-
 ; TODO add rl-history-grep
 ;(toplevel-command 'rl-hgrp

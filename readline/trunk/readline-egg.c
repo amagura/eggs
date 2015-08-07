@@ -54,6 +54,15 @@
     RL_EGG_END_TRACE;				\
   } while(0)
 
+#  define RKG_DBG(format, ...)					\
+     do {							\
+	  fprintf(stderr, "## (%s)(%s)%d\n",			\
+		  COM_PROGNAME, __FILE__, __LINE__);		\
+	  fprintf(stderr, "#  `%s'\n", __FUNCTION__);		\
+	  fprintf(stderr, (format), ##__VA_ARGS__);		\
+	  fprintf(stderr, "\n");	       			\
+     } while(0)
+
 #define RL_EGG_BEGIN_TRACE fprintf(stderr, "++ %s{%d}:\n\n", __FILE__, __LINE__)
 #define RL_EGG_END_TRACE fprintf(stderr, "\n-- %s %s `%s'\n\n", "In", "function", __FUNCTION__)
 #define RL_EGG_DEBUG(format, ...)		\
@@ -63,6 +72,7 @@
     fprintf(stderr, "%s", "\e[0m");		\
   } while(0)
 #else
+#define RKG_DBG(format, ...)
 #define RL_EGG_STACK(format, ...)
 #define RL_EGG_BEGIN_TRACE
 #define RL_EGG_END_TRACE
@@ -99,7 +109,65 @@ static struct gnu_readline_current_paren_color_t {
  *  ~ Alexej
  */
 
-static size_t concatl(char *buf, size_t bufsiz, const char *s1, ...)
+static char *concat(const char *s1, ...)
+{
+	va_list args;
+	const char *s;
+	char *p, *result;
+	unsigned long l, m, n;
+
+	m = n = strlen(s1);
+	va_start(args, s1);
+	while ((s = va_arg(args, char *))) {
+		l = strlen(s);
+		if ((m += l) < l) break;
+	}
+	va_end(args);
+	if (s || m >= INT_MAX) return NULL;
+
+#if defined(__cplusplus)
+	result = (char *)malloc(m + 1);
+#else
+	result = malloc(m + 1);
+#endif
+	if (!result) return NULL;
+
+	memcpy(p = result, s1, n);
+	p += n;
+	va_start(args, s1);
+	while ((s = va_arg(args, char *))) {
+		l = strlen(s);
+		if ((n += l) < l || n > m) break;
+		memcpy(p, s, l);
+		p += l;
+	}
+	va_end(args);
+	if (s || m != n || p != result + n) {
+		free(result);
+		return NULL;
+	}
+
+	*p = '\0';
+	return result;
+}
+
+/* unlike `concat', which returns a
+ * new pointer that must then be copied
+ * or acted upon in some meaningfully meaningless
+ * manner, `catl' returns the number of bytes belonging
+ * to `buf', which could _NOT_ be filled, always copying
+ * no more than `bufsiz` of data into `buf'
+ *
+ * If the return value is an integral value, which
+ * we'll call `y', that is less than 0,
+ * then the resulting catenation has been truncated by `!y'
+ * many bytes.  Similarlly, if a positive value is returned:
+ * `y' many bytes is how much of `buf', which was _NOT_ used.
+ *
+ * XXX A failure is indicated by a return value _equal to
+ * the destination buffers size_, which may make errors somewhat
+ * harder to spot! */
+static size_t concatl(char *dst, size_t sz, const char *s1, ...)
 {
      va_list args;
      const char *s = NULL;
@@ -110,81 +178,147 @@ static size_t concatl(char *buf, size_t bufsiz, const char *s1, ...)
      mdx = ndx = strlen(s1);
      va_start(args, s1);
      while ((s = va_arg(args, char *))) {
-          ldx = strlen(s);
-          if ((mdx += ldx) < ldx) break;
+	  ldx = strlen(s);
+	  if ((mdx += ldx) < ldx) break;
      }
      va_end(args);
-     if (s || mdx >= INT_MAX) return bufsiz;
+     if (s || mdx >= INT_MAX) return sz;
 
 #if defined(__cplusplus)
      tmp = (char *)malloc(mdx + 1);
 #else
      tmp = malloc(mdx + 1);
 #endif
-     if (!tmp) return bufsiz;
+     if (!tmp) return sz;
      bzero(tmp, mdx + 1);
-     bzero(buf, mdx + 1);
+     bzero(dst, mdx + 1);
 
      p = tmp;
      p = mempcpy(p, (char *)s1, ndx);
 
      used += ndx;
+     RKG_DBG("p: `%s`\n", p);
+     RKG_DBG("used: %lu\n", used - 0);
 
      va_start(args, s1);
      while ((s = va_arg(args, char *))) {
-          ldx = strlen(s);
-          if ((ndx += ldx) < ldx || ndx > mdx) break;
-          p = mempcpy(p, (char *)s, ldx);
-          used += ldx;
+	  ldx = strlen(s);
+	  if ((ndx += ldx) < ldx || ndx > mdx) break;
+	  p = mempcpy(p, (char *)s, ldx);
+	  used += ldx;
      }
      va_end(args);
      if (s || mdx != ndx || p != tmp + ndx) {
-          free(tmp);
-          return bufsiz;
+	  free(tmp);
+	  return sz;
      }
 
+     RKG_DBG("tmp: `%s'\n", tmp);
+     p = mempcpy(dst, tmp, (used > sz ? sz : used));
+     free(tmp);
      *p = '\0';
-     /* NOTE it's so easy to forget, but in C, arrays start at 0.
-      * I know it may sound silly to say that I forget this, but I do.
-      * Because of this, a pointer at position 255 is really at position
-      * 256, because the pointer's start position is 0; not 1.
-      * This is why, if you were to assign `*p' like so:
-      * *++p = '\0'; it would result in an error: because position 256 is
-      * outside of the malloc'd memory address. */
      ++used;
 
-     memcpy(buf, tmp, (used > bufsiz ? bufsiz : used));
-     free(tmp);
-     return bufsiz - used;
-}
-#undef catl
-#define catl(...) (concatl(__VA_ARGS__, (void *)NULL));
+     RKG_DBG("dst: `%s'\n", dst);
+     RKG_DBG("*p: `%c'\n", *p);
+     RKG_DBG("*--p: `%c'\n", cpeek(p, dst, 0));
+     RKG_DBG("strlen(dst): %lu\n", strlen(dst));
+     RKG_DBG("used#2: %lu\n", used - 0);
 
-static char cpeek(char *wp, char *str, short fwd)
-INLINE char peek_chr(char *cp, char *stringp, bool direct)
+     return (used > sz ? 0 : sz - used);
+}
+
+/* concatm is a little different:
+ * unlike `concatl' or `concat', concatm _moves_ memory: that is, the destination
+ * pointer can be passed as an argument. */
+static size_t concatm(char *dst, size_t sz, const char *s1, ...)
 {
-    if (direct) {
-    char next = '\0';
-    if (cp != &stringp[strlen(stringp) - 1]) {
-      next = *(++cp);
-      --cp;
-    } else {
-      next = *cp;
-    }
-    return next;
-  } else {
-    char prev = '\0';
-    if (cp != stringp) {
-      prev = *(--cp);
-      ++cp;
-    } else {
-      prev = *cp;
-    }
-    return prev;
-  }
+     va_list args;
+     const char *s = NULL;
+     char *p, *tmp;
+     unsigned long ldx, mdx, ndx;
+     size_t used = 0;
+
+     mdx = ndx = strlen(s1);
+     va_start(args, s1);
+     while ((s = va_arg(args, char *))) {
+	  ldx = strlen(s);
+	  if ((mdx += ldx) < ldx) break;
+     }
+     va_end(args);
+     if (s || mdx >= INT_MAX) return sz;
+
+#if defined(__cplusplus)
+     tmp = (char *)malloc(mdx + 1);
+#else
+     tmp = malloc(mdx + 1);
+#endif
+     if (!tmp) return sz;
+     bzero(tmp, mdx + 1);
+
+     p = tmp;
+     p = mempcpy(p, (char *)s1, ndx);
+
+     used += ndx;
+     RKG_DBG("p: `%s`\n", p);
+     RKG_DBG("used: %lu\n", used - 0);
+
+     va_start(args, s1);
+     while ((s = va_arg(args, char *))) {
+	  ldx = strlen(s);
+	  if ((ndx += ldx) < ldx || ndx > mdx) break;
+	  p = mempcpy(p, (char *)s, ldx);
+	  used += ldx;
+     }
+     va_end(args);
+     if (s || mdx != ndx || p != tmp + ndx) {
+	  free(tmp);
+	  return sz;
+     }
+     RKG_DBG("tmp: `%s'\n", tmp);
+#if defined(mempmove) && 0
+     p = mempmove(dst, tmp, (used > sz ? sz : used));
+#else
+     memmove(dst, tmp, (used > sz ? sz : used));
+     p = &dst[(used > sz ? sz : used)];
+#endif
+     free(tmp);
+     *p = '\0';
+     ++used;
+
+     RKG_DBG("dst: `%s'\n", dst);
+     RKG_DBG("*p: `%c'\n", *p);
+     RKG_DBG("*--p: `%c'\n", cpeek(p, dst, 0));
+     RKG_DBG("strlen(dst): %lu\n", strlen(dst));
+     RKG_DBG("used#2: %lu\n", used - 0);
+
+     return (used > sz ? 0 : sz - used);
 }
 
-INLINE int strnof_delim(char *str, char odelim, char cdelim, int count[2])
+# define cat(...) (concat(__VA_ARGS__, (void *)NULL))
+# define catl(...) (concatl(__VA_ARGS__, (void *)NULL))
+# define catm(...) (concatm(__VA_ARGS__, (void *)NULL))
+
+
+static char cpeek(const char *c, const char *s, const short fwd)
+{
+     if (fwd > 0) {
+	  if (*c == '\0'
+# if defined(_GNU_SOURCE)
+	      || c == strchr(s, '\0') - 1
+# else
+	      || c == &s[strlen(s)]
+# endif
+	       )
+	       return *c;
+	  else
+	       return *(c + 1);
+     }
+     return (c == s) ? *c : *(c - 1);
+}
+
+# if 0
+static int strnof_delim(char *str, char odelim, char cdelim, int count[2])
 {
   memset(count, 0, sizeof(*count)*2);
   RL_EGG_BEGIN_TRACE;
@@ -196,7 +330,7 @@ INLINE int strnof_delim(char *str, char odelim, char cdelim, int count[2])
     return 1;
 
   do {
-    if (cp != str && peek_chr(cp, str, false) == '\\')
+    if (cp != str && cpeek(cp, str, false) == '\\')
       continue;
 
     if (*cp == cdelim) {
@@ -220,64 +354,75 @@ INLINE int strnof_delim(char *str, char odelim, char cdelim, int count[2])
   RL_EGG_END_TRACE;
   return 0;
 }
+# endif
 
-INLINE char *str_unquotd(char *str)
+static int *strndelim(const char *s, const char od, const char cd, int count[2])
 {
-  //RL_EGG_BEGIN_TRACE;
-  //RL_EGG_DEBUG("str: `%s'\n", str);
-  //RL_EGG_END_TRACE;
+     memset(count, 0, sizeof(*count)*2);
+     char *c = strchr(s, '\0');
 
-  char *buf = "";
-  char *nbuf = "";
-  int count[2];
-  strnof_delim(str, '"', '"', count);
-  //RL_EGG_DEBUG("idx[0]: %d\n", count[0]);
-  //RL_EGG_DEBUG("idx[1]: %d\n", count[1]);
+     if (c == s)
+	  return NULL;
 
-  if (count[0] == 0)
-    return str;
-  int even = count[0] - abs(count[0] - count[1]);
-  char *token, *tmp, *rest;
-  bool need_free = true;
-  token = NULL;
-  rest = NULL;
-  tmp = strdupa(str);
+     do {
+	  if (c != s && cpeek(c, s, 0) == '\\')
+	       continue;
+	  if (*c == cd)
+	       ++count[1];
+	  else if (*c == od)
+	       ++count[0];
+     } while (c-- != s);
 
-  if (tmp == NULL) {
-#if DEBUG
-    perror(__FUNCTION__);
-#endif
-    return NULL;
-  }
+     if (od == cd && count[1] > 0) {
+	  if (count[1] % 2 == 1)
+	       while (count[0]++ < --count[1]);
+	  else {
+	       count[0] = count[1] * 0.5;
+	       count[1] *= 0.5;
+	  }
+     }
 
-  token = strtok_r(tmp, "\"", &rest);
-  if (token == NULL)
-    return str;
-  //RL_EGG_DEBUG("token: %s\n", token);
-  buf = memsafe_concat(buf, token, NULL);
+     return count;
+}
+static char *strwodqp(const char *src)
+{
+     size_t n = strlen(src) + 1;
+     int c[2] = {0, 0}, even = 0;
+     char *tmp, *token, *rest, *newp;
+     tmp = token = rest = newp = NULL;
 
-  while ((token = strtok_r(NULL, "\"", &rest)) != NULL) {
-    //RL_EGG_DEBUG("token (while): %s\n", token);
-    //RL_EGG_DEBUG("even (while): %d\n", even);
-    if (even % 2 == 1) {
-      if (need_free) {
-	nbuf = memsafe_concat(buf, token, NULL);
-	free(buf);
-	need_free = false;
-      } else {
-	buf = memsafe_concat(nbuf, token, NULL);
-	free(nbuf);
-	need_free = true;
-      }
-      --even;
-    } else {
-      ++even;
-    }
-  }
-  return buf;
+     if (!strndelim(src, '"', '"', c))
+	  return NULL;
+
+     if (c[0] == 0)
+	  return NULL;
+
+     tmp = strdup(src);
+     newp = malloc(n);
+     even = c[0] - abs(c[0] - c[1]);
+
+     token = strtok_r(tmp, "\"", &rest);
+
+     if (token == NULL) {
+	  free(newp);
+	  return NULL;
+     }
+
+     catl(newp, n, token);
+     while ((token = strtok_r(NULL, "\"", &rest)) != NULL) {
+	  if (even % 2 == 1) {
+	       catm(newp, n, newp, token);
+	       --even;
+	  } else {
+	       ++even;
+	  }
+     }
+
+     free(tmp);
+     return newp;
 }
 
-INLINE void clear_parbar(char token)
+static void clear_parbar(char token)
 {
   int idx = 0;
   for (; idx < 3; ++idx) {
@@ -288,7 +433,7 @@ INLINE void clear_parbar(char token)
   }
 }
 
-INLINE int parbar_in_string(char *str, char add_token)
+static int parbar_in_string(char *str, char add_token)
 {
   int *idxp = NULL;
   char sub_token = '\0';
@@ -306,7 +451,7 @@ INLINE int parbar_in_string(char *str, char add_token)
     return 0;
 
   do {
-    if (cp != str && peek_chr(cp, str, false) == '\\')
+    if (cp != str && cpeek(cp, str, false) == '\\')
       continue;
 
     RL_EGG_DEBUG("balnc.quote: %d\n", balnc.quote);
@@ -325,7 +470,7 @@ INLINE int parbar_in_string(char *str, char add_token)
   return *idxp;
 }
 
-INLINE int quote_in_string(char *str)
+static int quote_in_string(char *str)
 {
   if (str == NULL)
     return 0;
@@ -336,7 +481,7 @@ INLINE int quote_in_string(char *str)
     return 0;
 
   do {
-    if (cp != str && peek_chr(cp, str, false) == '\\')
+    if (cp != str && cpeek(cp, str, false) == '\\')
       continue;
 
     if (*cp == '"') {
@@ -660,7 +805,7 @@ char *last_history_line(const bool del_current, const bool script)
 void insert_last_history_line(const bool del_current, const bool script, const bool add_eol)
 {
      char *text = (add_eol
-		   ? memsafe_concat(last_history_line(del_current, script), "\n", NULL)
+		   ? cat(last_history_line(del_current, script), "\n", NULL)
 		   : last_history_line(del_current, script));
      if (text != NULL) {
 	  char *endp = strchr(text, '\0');
@@ -707,16 +852,16 @@ char *gnu_history_list() /* may look a bit messy, but it seems to work great ;D 
 
   if (hist_list == NULL)
     return NULL;
-  list_0 = memsafe_concat("", hist_list[0]->line, "\n", NULL);
+  list_0 = cat("", hist_list[0]->line, "\n", NULL);
   RL_EGG_DEBUG("buf@%d: %s\n", __LINE__, list_0);
 
   for (idx = 1; idx < history_length; ++idx) {
     if (need_free) {
-      list_1 = memsafe_concat(list_0, hist_list[idx]->line, "\n", NULL);
+      list_1 = concat(list_0, hist_list[idx]->line, "\n", NULL);
       free(list_0);
       need_free = false;
     } else {
-      list_0 = memsafe_concat(list_1, hist_list[idx]->line, "\n", NULL);
+      list_0 = concat(list_1, hist_list[idx]->line, "\n", NULL);
       free(list_1);
       need_free = true;
     }

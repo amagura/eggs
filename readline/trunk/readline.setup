@@ -84,6 +84,6 @@
 (install-extension
     'readline
     '("readline.so" "readline.import.so" "readline-static.o")
-    `((version           "4.0.0")
+    `((version           "4.1.0")
       (static            "readline-static.o")
       (static-options    ,rl-extralib)))
