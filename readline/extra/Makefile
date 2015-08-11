@@ -24,7 +24,7 @@ lint:
 
 build:
 	cd $(mydir)/../trunk; \
-	  sudo $(CHK_CC) -trunk
+	  sudo CFLAGS="$(CFLAGS)" $(CHK_CC) -trunk
 
 kill:
 	killall -9 csi || true

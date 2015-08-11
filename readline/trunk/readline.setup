@@ -3,6 +3,9 @@
 
 (use files)
 
+;; get environment CFLAGS bindings
+
+
 (define old-files
   (append
     (filter (lambda (y) (or (string-suffix? ".o" y)
@@ -32,6 +35,13 @@
   (string-append
    "-C -D_GNU_SOURCE=1"
    " -C -std=gnu99"
+   (let ((cflags (get-environment-variable "CFLAGS")))
+     (if (not (string=? "" cflags))
+	 (string-append " -C "
+			(string-join
+			 (string-split cflags " ")
+			 " -C "))
+	 ""))
    ))
 
 (define-syntax check-rllibs
@@ -84,6 +94,6 @@
 (install-extension
     'readline
     '("readline.so" "readline.import.so" "readline-static.o")
-    `((version           "4.1.0")
+    `((version           "4.2.0")
       (static            "readline-static.o")
       (static-options    ,rl-extralib)))

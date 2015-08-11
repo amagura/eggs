@@ -120,34 +120,35 @@
 (use posix irregex)
 
 #>
-#include "readline-egg.c"
+#include "foreign.c"
+#include "interface.c"
 
+/* OBSOLETE: D-D-D-D-DERP! */
 C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 {
-  int i;
-  C_word
-    sym,
-    bucket = C_u_i_car(pos);
+     int i;
+     C_word
+	  sym,
+	  bucket = C_u_i_car(pos);
 
-  if(!C_truep(bucket)) return C_SCHEME_FALSE; /* end already reached */
-  else i = C_unfix(bucket);
+     if(!C_truep(bucket)) return C_SCHEME_FALSE; /* end already reached */
+     else i = C_unfix(bucket);
 
-  bucket = C_u_i_cdr(pos);
+     bucket = C_u_i_cdr(pos);
 
-  while(bucket == C_SCHEME_END_OF_LIST) {
-    if(++i >= stable->size) {
-      C_set_block_item(pos, 0, C_SCHEME_FALSE);        /* no more buckets */
-      return C_SCHEME_FALSE;
-    }
-    else bucket = stable->table[ i ];
-  }
+     while(bucket == C_SCHEME_END_OF_LIST) {
+	  if(++i >= stable->size) {
+	       C_set_block_item(pos, 0, C_SCHEME_FALSE);        /* no more buckets */
+	       return C_SCHEME_FALSE;
+	  }
+	  else bucket = stable->table[ i ];
+     }
 
-  sym = C_block_item(bucket, 0);
-  C_set_block_item(pos, 0, C_fix(i));
-  C_mutate2(&C_u_i_cdr(pos), C_block_item(bucket, 1));
-  return sym;
+     sym = C_block_item(bucket, 0);
+     C_set_block_item(pos, 0, C_fix(i));
+     C_mutate2(&C_u_i_cdr(pos), C_block_item(bucket, 1));
+     return sym;
 }
-
 <#
 
 ;; Initialise (note the extra set of parens)
@@ -188,7 +189,7 @@ C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 		  #:save-history-on-exit #t
 		  #:record-history #t
 		  #:verify-history-expansions #f))
-(define version "4.1.0")
+(define version "4.1.2")
 #|/////////////////////////////////|#
 ;;;; Private Variables
 #|/////////////////////////////////|#
@@ -357,7 +358,6 @@ it's supposed to take a string of history entries and transform it like so:
       ((1) ">")
       ((2) "> ")
       (else (conc (make-string (- len 2) #\-) "> ")))))
-
 
 ;; Creates a port that reads using readline
 (define (make-readline-port #!optional prompt prompt2)
@@ -619,8 +619,10 @@ it's supposed to take a string of history entries and transform it like so:
 			 ",?" ",p" ",d" ",du" ",dur" ",q" ",l" ",ln" ",r"
 			 ",s" ",tr" ",utr" ",t" ",x"
 					; rl commands
-			 ",rl-clh" ",rl-savhist" ",rl-rec" ",rl-!!"
-			 ",rl-rd" ",rl-emacs" ",rl-vi"
+			 ",h-clear" ",h-save" ",h-rec" ",h-load"
+			 ",h-end"
+			 ",!!" ",vi-mode" ",emacs-mode"
+			 ",+egg" ",-egg" ",+eggs"
 			 ))
 
 (define (variables #!optional inputrc-format?)
@@ -632,35 +634,85 @@ it's supposed to take a string of history entries and transform it like so:
 						"           "
 						str-2))
 
-(toplevel-command 'rl-clh (lambda ()
+(toplevel-command 'h-clear (lambda ()
 			    (readline#clear-history))
-		  (pad ",rl-clh" "Clear this session's history"))
+		  ",h-clear          Clear this session's history")
 
-(toplevel-command 'rl-savhist (lambda ()
+(toplevel-command 'h-save (lambda ()
 				(let ((value (getkv readline#session #:save-history-on-exit)))
 				  (and (setkv! readline#session #:save-history-on-exit (not value))
 				       (not value))))
-		  ",rl-savhist       Enable/disable saving this session's history on exit (enabled by default)")
+		  (pad ",h-save" "Enable/disable saving this session's history on exit (default: on)"))
 
-(toplevel-command 'rl-rec (lambda ()
+(toplevel-command 'h-rec (lambda ()
 			    (let ((value (getkv readline#session #:record-history)))
 			      (and (setkv! readline#session #:record-history (not value))
 				   (not value))))
-		  (pad ",rl-rec" "Enable/disable recording history for this session (enabled by default)"))
+		  (pad ",h-rec" " Enable/disable recording history for this session (default: on)"))
 
-(toplevel-command 'rl-rd (lambda ()
-			   (readline#read-history (irregex-replace/all
+(toplevel-command 'h-load (lambda ()
+bl			   (readline#read-history (irregex-replace/all
 						   "~"
 						   (read-line)
 						   (get-environment-variable "HOME"))))
-		  (pad ",rl-rd" " Read history file into this session"))
+		  (pad ",h-load" "Read history file into this session"))
 
-(toplevel-command 'rl-!! readline#eval-last-history-line)
+(toplevel-command 'h-end (lambda ()
+			 ((foreign-lambda bool "gnu_histpmove" int) -1))
+		  ",h-end            Jump to end of history")
 
-(toplevel-command 'rl-vi (lambda ()
-			   (readline#parse-and-bind "set editing-mode vi")))
+(toplevel-command '!! readline#eval-last-history-line
+		  ",!!               Evaluate the previous history entry")
 
-(toplevel-command 'rl-emacs (lambda ()
-			      (readline#parse-and-bind "set editing-mode emacs")))
+(toplevel-command 'vi-mode (lambda ()
+			     (readline#parse-and-bind "set editing-mode vi"))
+		  ",vi-mode          Turn on Vi editing mode")
+
+(toplevel-command 'emacs-mode (lambda ()
+				(readline#parse-and-bind "set editing-mode emacs"))
+		  ",emacs-mode       Turn on Emacs editing mode")
+
+(toplevel-command '+egg (lambda ()
+			  (system
+			   (string-append
+			    "chicken-install -s "
+			    (read-line))))
+		  ",+egg             Install an egg")
+
+(toplevel-command '-egg (lambda ()
+			  (system
+			   (string-append
+			    "chicken-uninstall -s "
+			    (read-line))))
+		  ",-egg             Uninstall an egg")
+
+#;(toplevel-command '+eggs (lambda ()
+			   (let ((eggs
+				  (string-join
+				   (string-split
+				    (call-with-input-pipe
+				     "chicken-status -eggs"
+				     read-all)
+				    (format "~%"))
+				   " ")))
+
+			     (if (not (yes-or-no?
+				       "About to update installed eggs: proceed?"))
+				 (void)
+				 (if (= 0
+					(system (string-append
+						 "chicken-install -s -x "
+						 eggs))
+					)
+				     #t
+				     #f))))
+		  ",+eggs            Update installed eggs")
+
+#;(toplevel-command 'egg? (lambda ()
+			  (print (call-with-input-pipe
+				  (string-append
+				   "chicken-install -list")))))
+
+
 ; TODO add rl-history-grep
 ;(toplevel-command 'rl-hgrp
