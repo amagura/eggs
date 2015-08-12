@@ -14,7 +14,7 @@
 ((egg       "versions.egg")
  (category  egg-tools)
  (synopsis  "Procedures for extraction and comparison of version strings")
- (needs     eggdoc)
+ (needs     eggdoc http-client uri-generic)
  (eggdoc    "doc.scm")
  (author    "elf")
  (license   "BSD")

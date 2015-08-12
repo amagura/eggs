@@ -154,6 +154,18 @@ C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 ;; Initialise (note the extra set of parens)
 ((foreign-lambda void "gnu_readline_init"))
 
+(define-syntax do*
+  (er-macro-transformer
+   (lambda (form r c)
+     (##sys#check-syntax 'do* form '(_ #((symbol _ . #(_)) 0) . #(_ 1)))
+     (let* ((bindings (cadr form))
+	    (test (caddr form))
+	    (body (cddr form))
+	    (dovar (r 'doloop)))
+       `(let*
+	    ,dovar
+	  ,(map (lambda (b) (list (car b) (car (cdr b)))) bindings)
+
 (define-syntax var-fn
   (syntax-rules ()
     ((_ c-name set)
@@ -188,7 +200,8 @@ C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 (define session '(#:load-history-file #t
 		  #:save-history-on-exit #t
 		  #:record-history #t
-		  #:verify-history-expansions #f))
+		  #:verify-history-expansions #f
+		  #:egg-actions-need-sudo #t))
 (define version "4.1.2")
 #|/////////////////////////////////|#
 ;;;; Private Variables
@@ -622,7 +635,7 @@ it's supposed to take a string of history entries and transform it like so:
 			 ",h-clear" ",h-save" ",h-rec" ",h-load"
 			 ",h-end"
 			 ",!!" ",vi-mode" ",emacs-mode"
-			 ",+egg" ",-egg" ",+eggs"
+			 ",+install" ",-uninstall" ",+update"
 			 ))
 
 (define (variables #!optional inputrc-format?)
@@ -672,41 +685,49 @@ bl			   (readline#read-history (irregex-replace/all
 				(readline#parse-and-bind "set editing-mode emacs"))
 		  ",emacs-mode       Turn on Emacs editing mode")
 
-(toplevel-command '+egg (lambda ()
+(toplevel-command '+install (lambda ()
 			  (system
 			   (string-append
-			    "chicken-install -s "
+			    "chicken-install"
+			    (if (getkv readline#session #:egg-actions-need-sudo)
+				" -s "
+				" ")
 			    (read-line))))
-		  ",+egg             Install an egg")
+		  ",+install         Install an egg")
 
-(toplevel-command '-egg (lambda ()
+(toplevel-command '-uninstall (lambda ()
 			  (system
 			   (string-append
-			    "chicken-uninstall -s "
+			    "chicken-uninstall"
+			    (if (getkv readline#session #:egg-actions-need-sudo)
+				" -s "
+				" ")
 			    (read-line))))
-		  ",-egg             Uninstall an egg")
+		  ",-uninstall       Uninstall an egg")
 
-#;(toplevel-command '+eggs (lambda ()
-			   (let ((eggs
-				  (string-join
+#;(toplevel-command '+update (lambda ()
+			   (let* ((eggs
 				   (string-split
 				    (call-with-input-pipe
-				     "chicken-status -eggs"
+				     "chicken-status -list"
 				     read-all)
-				    (format "~%"))
-				   " ")))
+				    (format "~%")))
+				  )
+			     (do ((.eggs. (caadr
+
+
 
 			     (if (not (yes-or-no?
 				       "About to update installed eggs: proceed?"))
 				 (void)
 				 (if (= 0
 					(system (string-append
-						 "chicken-install -s -x "
+						 "chicken-install -x "
 						 eggs))
 					)
 				     #t
 				     #f))))
-		  ",+eggs            Update installed eggs")
+		  ",+update          Update installed eggs")))))
 
 #;(toplevel-command 'egg? (lambda ()
 			  (print (call-with-input-pipe

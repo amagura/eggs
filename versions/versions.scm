@@ -48,13 +48,17 @@
  bump:micro!
  bump:patch!
  bump!
+ local
+ remote
+ update-available?
 
  )
 
 (import chicken scheme)
 (require-library srfi-1 srfi-13)
-(import srfi-1 srfi-13 data-structures)
+(import srfi-1 srfi-13 data-structures irregex posix utils)
 (import (only extras fprintf))
+(use http-client uri-generic)
 
 
 ;;; version type
@@ -485,6 +489,32 @@
      ((version:micro version) (bump:micro! version))
      ((version:minor version) (bump:minor! version)))))
 
+(define (local egg)
+  (irregex-replace
+   (format "~%")
+   (last
+    (string-split
+     (call-with-input-pipe
+      (string-append "chicken-status " egg)
+      read-all)))))
+
+(define (remote egg #!optional url)
+  (let ((.url.
+	 (if url
+	     url
+	     "http://chicken.kitten-technologies.co.uk/henrietta.cgi?name=")))
+    (version-sort
+     (string-split
+      (with-input-from-request
+       (string-append
+	.url.
+	(uri-encode-string egg)
+	"&listversions=1")
+       #f read-all)
+      (format "~%")))))
+
+(define (update-available? egg #!optional url)
+  (version-newer? (last (remote egg)) (local egg)))
 
 
 )
