@@ -1,0 +1,22 @@
+;;;; egg:       versions
+;;;; file:      versions.setup
+;;;; author:    elf <elf@ephemeral.net>
+;;;; author:    david krentzlin <david@lisp-unleashed.de>
+;;;; date:      07 Apr 2008
+;;;; licence:   BSD (see LICENCE)
+;;;; dialect:   r5rs
+;;;; requires:  chicken build tools
+;;;; purpose:   chicken-setup installation instructions for versions
+
+
+(compile -s -d0 -O2 -x -no-trace -no-lambda-info versions.scm -j versions)
+(compile -s -d0 -O2 versions.import.scm)
+
+(run (csi -qbs doc.scm > versions.html))
+
+(install-extension
+    'versions
+    '("versions.so" "versions.import.so" "versions.html")
+    '((version "1.15")
+      (documentation  "versions.html")))
+

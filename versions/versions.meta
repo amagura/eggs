@@ -1,0 +1,23 @@
+;;;; egg:       versions
+;;;; file:      versions.meta
+;;;; author:    elf <elf@ephemeral.net>
+;;;; date:      07 Apr 2008
+;;;; licence:   BSD (see LICENCE)
+;;;; dialect:   r5rs
+;;;; requires:  chicken build tools
+;;;; purpose:   chicken-setup metadata for versions
+
+
+
+
+
+((egg       "versions.egg")
+ (category  egg-tools)
+ (synopsis  "Procedures for extraction and comparison of version strings")
+ (needs     eggdoc)
+ (eggdoc    "doc.scm")
+ (author    "elf")
+ (license   "BSD")
+ (test-depends missbehave)
+ (files ".hgignore" "LICENCE" "doc.scm" "spec/versions.scm" "tests/run.scm" "versions.html" "versions.meta" "versions.release-info" "versions.scm" "versions.setup"))
+
