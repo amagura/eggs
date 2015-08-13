@@ -1,1 +1,10 @@
-(pp (program-name))
+;;; missing.setup -*- Scheme -*-
+;;; vim:ft=scheme:
+
+(let* ((this-file (last (argv)))
+       (mode
+	   (if (irregex-match "missing.setup" this-file)
+	       'prod
+	       'devel))
+       (flags
+	(if
