@@ -1,0 +1,24 @@
+# object files
+*.o
+*.\#*
+
+# binaries
+bin/test
+test
+
+# automake stuff
+autom4te.cache
+config.log
+config.status
+aclocal.m4
+Makefile.in
+Makefile
+.deps
+configure
+build-aux
+
+# misc
+/tmp
+PROFILE-*
+nohup.out
+test.sh
