@@ -154,48 +154,6 @@ C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 ;; Initialise (note the extra set of parens)
 ((foreign-lambda void "gnu_readline_init"))
 
-(define-syntax do*
-  (syntax-rules ()
-    ((_ ((var init step) ...)
-	(test ... result)
-	body ...)
-     (let* ((var init) ...)
-       (let loop ()
-         (cond (test ... result)
-               (else body ...
-                     (set! var step) ...
-                     (loop))))))
-    ((_ )
-     (error "The macro do* may not be called with 0 arguments: (do*)"))))
-
-(define-syntax do-q
-  (syntax-rules ()
-    ((_ ((?var0 ?init0 ?inc0) ...)
-         (?test ?result)
-         ?body ...)
-     (let* ((?var0 ?init0) ...)
-       (let lp ()
-         (cond (?test ?result)
-               (else ?body ...
-                     (set! ?var0 ?inc0) ...
-                     (lp))))))))
-
-(define-syntax setq
-  (syntax-rules ()
-    ((_ a b)
-     (begin (set! a b)
-	    b))
-    ((_ a b c ...)
-     (begin (set! a b)
-	    (setq c ...)))
-    ((_ a)
-     (error (string-append
-	     "setq: odd number of arguments: ("
-	     (->string (quote a))
-	     ")")))
-    ((_ )
-     #f)))
-
 (define-syntax var-fn
   (syntax-rules ()
     ((_ c-name set)
@@ -230,8 +188,7 @@ C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 (define session '(#:load-history-file #t
 		  #:save-history-on-exit #t
 		  #:record-history #t
-		  #:verify-history-expansions #f
-		  #:egg-actions-need-sudo #t))
+		  #:verify-history-expansions #f))
 (define version "4.1.2")
 #|/////////////////////////////////|#
 ;;;; Private Variables
@@ -694,10 +651,10 @@ it's supposed to take a string of history entries and transform it like so:
 		  (pad ",h-rec" " Enable/disable recording history for this session (default: on)"))
 
 (toplevel-command 'h-load (lambda ()
-bl			   (readline#read-history (irregex-replace/all
-						   "~"
-						   (read-line)
-						   (get-environment-variable "HOME"))))
+			    (readline#read-history (irregex-replace/all
+						    "~"
+						    (read-line)
+						    (get-environment-variable "HOME"))))
 		  (pad ",h-load" "Read history file into this session"))
 
 (toplevel-command 'h-end (lambda ()
@@ -714,56 +671,6 @@ bl			   (readline#read-history (irregex-replace/all
 (toplevel-command 'emacs-mode (lambda ()
 				(readline#parse-and-bind "set editing-mode emacs"))
 		  ",emacs-mode       Turn on Emacs editing mode")
-
-(toplevel-command '+install (lambda ()
-			  (system
-			   (string-append
-			    "chicken-install"
-			    (if (getkv readline#session #:egg-actions-need-sudo)
-				" -s "
-				" ")
-			    (read-line))))
-		  ",+install         Install an egg")
-
-(toplevel-command '-uninstall (lambda ()
-			  (system
-			   (string-append
-			    "chicken-uninstall"
-			    (if (getkv readline#session #:egg-actions-need-sudo)
-				" -s "
-				" ")
-			    (read-line))))
-		  ",-uninstall       Uninstall an egg")
-
-#;(toplevel-command '+update (lambda ()
-			   (let* ((eggs
-				   (string-split
-				    (call-with-input-pipe
-				     "chicken-status -list"
-				     read-all)
-				    (format "~%")))
-				  )
-			     (do ((.eggs. (caadr
-
-
-
-			     (if (not (yes-or-no?
-				       "About to update installed eggs: proceed?"))
-				 (void)
-				 (if (= 0
-					(system (string-append
-						 "chicken-install -x "
-						 eggs))
-					)
-				     #t
-				     #f))))
-		  ",+update          Update installed eggs")))))
-
-#;(toplevel-command 'egg? (lambda ()
-			  (print (call-with-input-pipe
-				  (string-append
-				   "chicken-install -list")))))
-
 
 ; TODO add rl-history-grep
 ;(toplevel-command 'rl-hgrp

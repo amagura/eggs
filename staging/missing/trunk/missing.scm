@@ -40,10 +40,36 @@
      egg-versions
      local-egg-version
      remote-egg-versions
+
+     ;;; variables (actual variables; not functions or macros)
+     settings
      )
 
-  (import chicken scheme data-structures irregex posix utils srfi-1)
-  (use http-client uri-generic versions)
+(import chicken scheme data-structures
+	irregex posix utils srfi-1 extras
+	csi)
+(use http-client uri-generic versions)
+
+#|/////////////////////////////////|#
+;;;; Private Functions
+#|/////////////////////////////////|#
+(define-inline (setkv! kvlst key value)
+  (let ((kv (member key kvlst)))
+    (if kv
+	(set-car! (cdr kv) value))))
+
+(define-inline (getkv kvlst key #!optional default)
+  (let ((kv (member key kvlst)))
+    (if kv
+	(cadr kv)
+	default)))
+#|/////////////////////////////////|#
+;;;; Public Variables
+#|/////////////////////////////////|#
+(define settings '(#:egg-actions-need-sudo #t))
+#|/////////////////////////////////|#
+;;;; Public Functions
+#|/////////////////////////////////|#
 
 ;;; --- math ---
 
@@ -151,3 +177,52 @@
       (local-egg-version name)))
 
 )
+
+
+(toplevel-command '+install (lambda ()
+			  (system
+			   (string-append
+			    "chicken-install"
+			    (if (getkv missing#settings #:egg-actions-need-sudo)
+				" -s "
+				" ")
+			    (read-line))))
+		  ",+install         Install an egg")
+
+(toplevel-command '-uninstall (lambda ()
+			  (system
+			   (string-append
+			    "chicken-uninstall"
+			    (if (getkv missing#settings #:egg-actions-need-sudo)
+				" -s "
+				" ")
+			    (read-line))))
+		  ",-uninstall       Uninstall an egg")
+
+(toplevel-command '+update (lambda ()
+			     (let* ((eggs (string-split (call-with-input-pipe
+							"chicken-status -eggs"
+							read-all)
+						       (format "~%")))
+				   (toup (filter missing#update-available? eggs))
+				   )
+			       (if (not (yes-or-no?
+					 (string-append
+					  "About to update "
+					  (number->string (length toup))
+					  " eggs: proceed?")))
+				   (void)
+				   (do ((left toup (cdr toup)))
+				       ((null? left))
+				     (system (string-append
+					      "chicken-install"
+					      (if (getkv missing#settings #:egg-actions-need-sudo)
+						  " -s "
+						  " ")
+					      (car toup)))))))
+		  ",+update          Update installed eggs")
+
+#;(toplevel-command 'egg? (lambda ()
+			  (print (call-with-input-pipe
+				  (string-append
+				   "chicken-install -list")))))

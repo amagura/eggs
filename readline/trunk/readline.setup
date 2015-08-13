@@ -53,8 +53,8 @@
 	  libs))))
 
 ;(define curry (lambda (f . c) (lambda x (apply f (append c x)))))
-#|
-(define rl-extralib
+
+#;(define rl-extralib
   (list-ref (list-index (lambda (y) (equal? #t y))
               (list (check-rllibs " -lreadline")
                     (check-rllibs " -lreadinline -lhistory")
@@ -66,7 +66,8 @@
                     (check-rllibs " -lreadline -lhistory -ltermcap")
                     (check-rllibs " -lreadline -lhistory -lncurses")
                     (check-rllibs " -lreadline -lhistory -lcurses")
-                    (check-rllibs " -lreadline -lhistory -ltermcap"))))|#
+                    (check-rllibs " -lreadline -lhistory -ltermcap")))))
+
 (define rl-extralib
   (or
     (check-rllibs "-lreadline -lhistory -ltermcap")
@@ -97,4 +98,3 @@
     `((version           "4.0.0")
       (static            "readline-static.o")
       (static-options    ,rl-extralib)))
-)
