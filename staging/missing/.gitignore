@@ -22,3 +22,6 @@ build-aux
 PROFILE-*
 nohup.out
 test.sh
+
+# scheme
+*.import.scm
