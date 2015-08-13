@@ -42,8 +42,8 @@
      remote-egg-versions
      )
 
-(import scheme chicken data-structures irregex posix utils)
-(use srfi-1 http-client uri-generic versions)
+  (import chicken scheme data-structures irregex posix utils srfi-1)
+  (use http-client uri-generic versions)
 
 ;;; --- math ---
 
@@ -141,13 +141,13 @@
       (format "~%")))))
 
 (define (update-available? egg #!optional url)
-  (versions#version-newer? (last (missing#remote-egg-versions egg)) (missing#local-egg-version egg)))
+  (versions#version-newer? (last (remote-egg-versions egg)) (local-egg-version egg)))
 
 ;; find the versions for the given egg; `remote' defaults to #f
 (define (egg-versions name remote #!optional url)
   (if (and (true? remote) ;; if remote, then
 	   (non-zero? remote))
-      (missing#remote-egg-versions name url)
-      (missing#local-egg-version name)))
+      (remote-egg-versions name url)
+      (local-egg-version name)))
 
 )
