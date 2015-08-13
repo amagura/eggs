@@ -16,4 +16,6 @@
 	"foreign.c"
 	"musthaves.h"
 	"readline.setup"
-	"test/run.scm"))
+	"test/run.scm"
+	"AUTHORS"
+	"LICENSE"))

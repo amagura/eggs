@@ -1,0 +1,44 @@
+* Alexej Magura:
+
+ > authored and wrote this module; some of it with help.
+
+* Peter Bex; Felix L. Winkelmann:
+
+ > wrote `http-client': a dependency;
+ > neither Peter Bex or Felix L. Winkelmann endorse or promote
+ > this module, or the use thereof.
+
+ Http-Client
+ ------------
+ > Copyright (c) 2008-2015, Peter Bex
+ > Parts copyright (c) 2000-2004, Felix L. Winkelmann
+ > All rights reserved.
+
+*  Ivan Raikov; Peter Bex:
+
+ > wrote `uri-generic': a dependency;
+ > neither Ivan Raikov or Peter Bex endorse or promote
+ > this module, or the use thereof.
+
+ Uri-Generic
+ -----------
+ > Copyright 2008-2014 Ivan Raikov, Peter Bex.
+ > All rights reserved.
+
+* Peter Bex:
+
+ > wrote the original implementation of `do*', in response
+ > to a question of mine on SO (Stack Overflow); I then
+ > (somewhat cumbersomely) adapted it to my own style,
+ > tastes, and needs.
+
+* Lenny Frank; David Krentzlin:
+
+ > wrote `versions': a dependency;
+ > neither Lenny Frank or David Krentzlin endorse or promote
+ > this module, or the use thereof.
+
+ Versions
+ --------
+ > Copyright (C) 2008, Lenny Frank.  All rights reserved.
+ > Copyright (C) 2011, David Krentzlin. All rights reserved.

@@ -1,0 +1,16 @@
+;;; missing.meta -*- Scheme -*-
+;;; vim:ft=scheme:
+
+((egg "missing.egg")
+ (category lang-exts)
+ (doc-from-wiki)
+ (license "Apache-2")
+ (depends "http-client" "uri-generic" "versions")
+ (maintainer "Alexej Magura")
+ (author "Alexej Magura")
+ (synopsis "Convenient, if not useful, functions and macros")
+ (files "missing.scm"
+ 	"missing.meta"
+	"missing.setup"
+	"AUTHORS"
+	"LICENSE"))

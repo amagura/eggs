@@ -155,16 +155,46 @@ C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 ((foreign-lambda void "gnu_readline_init"))
 
 (define-syntax do*
-  (er-macro-transformer
-   (lambda (form r c)
-     (##sys#check-syntax 'do* form '(_ #((symbol _ . #(_)) 0) . #(_ 1)))
-     (let* ((bindings (cadr form))
-	    (test (caddr form))
-	    (body (cddr form))
-	    (dovar (r 'doloop)))
-       `(let*
-	    ,dovar
-	  ,(map (lambda (b) (list (car b) (car (cdr b)))) bindings)
+  (syntax-rules ()
+    ((_ ((var init step) ...)
+	(test ... result)
+	body ...)
+     (let* ((var init) ...)
+       (let loop ()
+         (cond (test ... result)
+               (else body ...
+                     (set! var step) ...
+                     (loop))))))
+    ((_ )
+     (error "The macro do* may not be called with 0 arguments: (do*)"))))
+
+(define-syntax do-q
+  (syntax-rules ()
+    ((_ ((?var0 ?init0 ?inc0) ...)
+         (?test ?result)
+         ?body ...)
+     (let* ((?var0 ?init0) ...)
+       (let lp ()
+         (cond (?test ?result)
+               (else ?body ...
+                     (set! ?var0 ?inc0) ...
+                     (lp))))))))
+
+(define-syntax setq
+  (syntax-rules ()
+    ((_ a b)
+     (begin (set! a b)
+	    b))
+    ((_ a b c ...)
+     (begin (set! a b)
+	    (setq c ...)))
+    ((_ a)
+     (error (string-append
+	     "setq: odd number of arguments: ("
+	     (->string (quote a))
+	     ")")))
+    ((_ )
+     #f)))
 
 (define-syntax var-fn
   (syntax-rules ()
