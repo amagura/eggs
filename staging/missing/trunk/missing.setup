@@ -1,0 +1,19 @@
+;;; missing.setup -*- Scheme -*-
+;;; vim:ft=scheme:
+
+(let* ((this-file (last (argv)))
+       (mode
+	   (if (irregex-match "missing.setup" this-file)
+	       'prod
+	       'devel))
+       (flags
+	(if (eq? 'prod mode)
+	    " -d0 -O2 "
+	    " -d2 ")))
+  (compile -s ,flags -j missing missing.scm)
+  (compile -s ,flags missing.import.scm)
+
+  (install-extension
+   'missing
+   '("missing.so" "missing.import.so")
+   '((version "0.1.0")))
