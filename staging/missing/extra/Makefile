@@ -47,7 +47,8 @@ clean: tidy
 	  cd ../trunk ;\
 	  $(RM) common.o ;\
 	  for _f in *.so *.html; do $(RM) "$$_f"; done; \
-	  $(RM) valgrind
+	  $(RM) valgrind ;\
+	  $(RM) missing.import.scm
 
 tidy:
 	cd $(mydir); \
