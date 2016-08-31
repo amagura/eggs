@@ -122,6 +122,33 @@
 #>
 #include "foreign.c"
 #include "interface.c"
+
+/* OBSOLETE: D-D-D-D-DERP! */
+C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
+{
+     int i;
+     C_word
+	  sym,
+	  bucket = C_u_i_car(pos);
+
+     if(!C_truep(bucket)) return C_SCHEME_FALSE; /* end already reached */
+     else i = C_unfix(bucket);
+
+     bucket = C_u_i_cdr(pos);
+
+     while(bucket == C_SCHEME_END_OF_LIST) {
+	  if(++i >= stable->size) {
+	       C_set_block_item(pos, 0, C_SCHEME_FALSE);        /* no more buckets */
+	       return C_SCHEME_FALSE;
+	  }
+	  else bucket = stable->table[ i ];
+     }
+
+     sym = C_block_item(bucket, 0);
+     C_set_block_item(pos, 0, C_fix(i));
+     C_mutate2(&C_u_i_cdr(pos), C_block_item(bucket, 1));
+     return sym;
+}
 <#
 
 ;; Initialise (note the extra set of parens)
@@ -429,19 +456,31 @@ it's supposed to take a string of history entries and transform it like so:
        (void)))
 ;;;;;;;; Tab Completion ;;;;;;;;
 
+;; Borrowed from the oblist egg
+(define find-symbol-table (foreign-lambda c-pointer "C_find_symbol_table" c-string))
+(define enum-symbols! (foreign-lambda scheme-object "C_enumerate_symbols" c-pointer scheme-object))
+
 ;; Globally defined enumeration state (callbacks can't be closures)
 (define enum-funcs '())
 
-;; Environment symbols
+;; Creates a list of closures that enumerate anything the user would want to type
 (define (create-symbol-ef word)
-  (let ((index -1))
+  (let ((global-symbol-index (cons -1 '()))
+	(global-symbol-pointer (find-symbol-table ".")))
     (lambda ()
-      (let ((identifiers (list->vector (map car (##sys#current-environment)))))
-        (let loop ()
-          (set! index (+ index 1))
-          (if (>= index (vector-length identifiers))
-              ""
-              (symbol->string (vector-ref identifiers index))))))))
+      (let loop ()
+	(let ((symb (enum-symbols! global-symbol-pointer
+				   global-symbol-index)))
+	  (cond ((not symb)
+		 "")
+		((not (##sys#symbol-has-toplevel-binding? symb))
+		 (loop))
+		(else
+		 (let ((str (##sys#symbol->qualified-string symb)))
+		   ;; Possibly undo the mangling of keywords
+		   (if (not (substring=? "###" str))
+		       str
+		       (string-append (substring str 3) ":"))))))))))
 
 ;; R5RS keywords (including some special forms not included in above)
 (define (create-static-ef word)
