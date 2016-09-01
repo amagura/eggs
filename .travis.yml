@@ -11,3 +11,5 @@ install:
   - sudo chicken-install -s readline
 script:
   - make
+after_success:
+  - make check
