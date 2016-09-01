@@ -8,5 +8,6 @@ install:
   - sudo apt-get install clang
   - sudo apt-get install libchicken-dev chicken-bin
   - sudo apt-get install gcc-4.4 gcc-4.5 gcc-4.6
+  - sudo chicken-install -s -x readline
 script:
   - make
