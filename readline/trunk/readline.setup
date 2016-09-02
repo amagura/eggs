@@ -36,7 +36,7 @@
    "-C -D_GNU_SOURCE=1"
    " -C -std=gnu99"
    (let ((cflags (get-environment-variable "CFLAGS")))
-     (if cflags
+     (if (not (string=? "" (or (and (boolean? cflags) "") cflags)))
 	 (string-append " -C "
 			(string-join
 			 (string-split cflags " ")
