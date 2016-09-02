@@ -54,7 +54,8 @@ clean: tidy
 	  cd ../trunk ;\
 	  $(RM) common.o ;\
 	  for _f in *.so *.html; do $(RM) "$$_f"; done; \
-	  $(RM) valgrind
+	  $(RM) valgrind ;\
+	  $(RM) *\~ ;\
 
 tidy:
 	cd $(mydir); \
@@ -73,7 +74,8 @@ release: sure doc clean
 	  cd ..; \
 	  svn copy trunk tags/$(version) ;\
 	  cd tags/$(version) ;\
-	  $(RM) Makefile
+	  $(RM) Makefile ;\
+	  $(RM) a.scm test.scm auto.txt LICENSE
 
 test-release: sure doc
 	cd $(mydir); \
