@@ -75,7 +75,7 @@ release: sure doc clean
 	  svn copy trunk tags/$(version) ;\
 	  cd tags/$(version) ;\
 	  $(RM) Makefile ;\
-	  $(RM) a.scm test.scm auto.txt LICENSE
+	  $(RM) {a,test}.scm {auto,manual}.txt LICENSE
 
 test-release: sure doc
 	cd $(mydir); \
