@@ -35,14 +35,14 @@
   (string-append
    "-C -D_GNU_SOURCE=1"
    " -C -std=gnu99"
-   (let ((cflags (get-environment-variable "CFLAGS")))
-     (if (not (string=? "" (or (and (boolean? cflags) "") cflags)))
-	 (string-append " -C "
-			(string-join
-			 (string-split cflags " ")
-			 " -C "))
-	 ""))
-   ))
+  (let ((cflags (get-environment-variable "CFLAGS")))
+    (if (and cflags (not (string=? cflags "")))
+	(string-append " -C "
+		       (string-join
+			(string-split cflags " ")
+			" -C "))
+	""))
+  ))
 
 (define-syntax check-rllibs
   (syntax-rules ()
