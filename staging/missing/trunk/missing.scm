@@ -40,6 +40,7 @@
      egg-versions
      local-egg-version
      remote-egg-versions
+     update-available?
 
      ;;; variables (actual variables; not functions or macros)
      settings
@@ -120,7 +121,7 @@
                      (set! var step) ...
                      (loop))))))
     ((_ )
-     (error "The macro do* may not be called with 0 arguments: (do*)"))))
+     (syntax-error "The macro do* may not be called with 0 arguments: (do*)"))))
 
 ;;; --- assignment ---
 
@@ -133,7 +134,7 @@
      (begin (set! a b)
 	    (setq c ...)))
     ((_ a)
-     (error (string-append
+     (syntax-error (string-append
 	     "setq: odd number of arguments: ("
 	     (->string (quote a))
 	     ")")))
@@ -143,28 +144,40 @@
 ;;; --- eggs ---
 
 (define (local-egg-version egg)
-  (irregex-replace
-   (format "~%")
-   (last
-    (string-split
-     (call-with-input-pipe
-      (string-append "chicken-status " egg)
-      read-all)))))
+  (let ((.ver. (string-split
+		(call-with-input-pipe
+		 (string-append "chicken-status " egg)
+		 read-all))))
+    (irregex-replace
+     (format "~%")
+     (irregex-replace "unknown"
+		      (if (null? .ver.)
+			  "0.0.0"
+			  (last .ver.))
+		      "0.0.0"))))
 
-(define (remote-egg-versions egg #!optional url)
-  (let ((.url.
+(define (remote-egg-versions egg #!optional url debug cb)
+  (let* ((.url.
 	 (if url
 	     url
-	     "http://chicken.kitten-technologies.co.uk/henrietta.cgi?name=")))
-    (versions#version-sort
-     (string-split
-      (http-client#with-input-from-request
-       (string-append
-	.url.
-	(uri-encode-string egg)
-	"&listversions=1")
-       #f read-all)
-      (format "~%")))))
+	     "http://chicken.kitten-technologies.co.uk/henrietta.cgi?name="))
+	 (.ver.
+	  (string-split
+	   (http-client#with-input-from-request
+	    (string-append
+	     .url.
+	     (uri-encode-string egg)
+	     "&listversions=1")
+	    #f read-all)
+	   (format "~%")))
+	 )
+    (if (eq? #t debug)
+	(pp (cons egg .ver.))
+	(void))
+    (versions#version-sort (filter-map (lambda (x)
+					 (or (and (irregex-search '(: ".") x) x)
+					     "0.0.0"))
+				       .ver.))) (cb))
 
 (define (update-available? egg #!optional url)
   (versions#version-newer? (last (remote-egg-versions egg)) (local-egg-version egg)))
@@ -178,6 +191,7 @@
 
 )
 
+(use progress-indicators)
 
 (toplevel-command '+install (lambda ()
 			  (system
@@ -203,8 +217,13 @@
 			     (let* ((eggs (string-split (call-with-input-pipe
 							"chicken-status -eggs"
 							read-all)
-						       (format "~%")))
-				   (toup (filter missing#update-available? eggs))
+							(format "~%")))
+				    (pbar (make-progress-bar #:null #f #f #f #f 0 (length eggs) #f "ok"))
+				    (toup
+				     (and
+				       (pp "Retrieving remote versions for installed eggs...")
+				       (show-progress-bar pbar)
+				       (filter missing#update-available? eggs #f #f `(advance-progress-bar! ,pbar 1))))
 				   )
 			       (if (not (yes-or-no?
 					 (string-append
@@ -212,8 +231,10 @@
 					  (number->string (length toup))
 					  " eggs: proceed?")))
 				   (void)
-				   (do ((left toup (cdr toup)))
+				   (do ((left toup (cdr left)))
 				       ((null? left))
+				     (pp 'toup toup)
+				     (pp 'left left)
 				     (system (string-append
 					      "chicken-install"
 					      (if (getkv missing#settings #:egg-actions-need-sudo)
