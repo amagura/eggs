@@ -1,4 +1,11 @@
-(require-extension test readline srfi-1 kvlists)
+(require-extension test readline srfi-1)
+
+(define (kvlist? x)
+  (and (proper-list? x)
+       (= (modulo (length x) 2) 0)
+       (every (lambda (kv) (keyword? (car kv)))
+	      (chop x 2))))
+
 (test-begin "Readline variables")
 (test-assert "readline#session is a kvlist"
 	     (kvlist? readline#session))

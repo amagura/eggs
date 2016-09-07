@@ -5,7 +5,7 @@
  (category io)
  (doc-from-wiki)
  (license "GPL-2")
- (test-depends test kvlists)
+ (test-depends test)
  (maintainer "Alexej Magura")
  (author "Tony Garnock-Jones")
  (synopsis "An interface to the GNU readline library")

@@ -23,3 +23,7 @@
   The version that I used as the basis for the concat family of functions, albeit slightly
   different (if at all), can be found here:
   "http://openwall.info/wiki/_media/people/solar/software/public-domain-source-code/concat.c"
+
+* Arto Bendiken <http://bendiken.net/>
+
+  - wrote the implementation of kvlist? that I use in the run.scm test file.
