@@ -1,0 +1,29 @@
+* Tony Garnock-Jones
+
+  - the original Author and, presumably, maintainer.
+
+* Heath Johns
+
+  - paren bouncing; auto-completion code.
+
+* Alexej Magura <amagura92*gmail*>
+
+  - The history related functions, most of the changes in versions 2.0 and later.
+
+* Alexander Peslyak <solar at openwall.com>
+
+  - Wrote the implementation of `concat', which he subsequently released into the Public Domain.
+  I came across it while trying to find a viable alternative to a `concat' implementation found in the
+  GNU C manual, which I was uncomfortable using since it is licensed under the GNU FDL, which AFAIK
+  could mean that using it in a non-GPL'd piece of software might be in violation of its license.
+  So I was only too pleased when I came across Alexander Peslyak's code and realized that it was Public Domain.
+
+  NOTE: Alexander Peslyak does not in any way, shape, or form endorse my use of his code.
+
+  The version that I used as the basis for the concat family of functions, albeit slightly
+  different (if at all), can be found here:
+  "http://openwall.info/wiki/_media/people/solar/software/public-domain-source-code/concat.c"
+
+* Arto Bendiken <http://bendiken.net/>
+
+  - wrote the implementation of kvlist? that I use in the run.scm test file.
