@@ -304,7 +304,6 @@ void gnu_readline_init()
      rl_bind_keyseq("[D", highlight_paren);
 #endif
      rl_completion_entry_function = &gnu_readline_tab_complete;
-     rl_variable_bind("rl_catch_signals", 0);
      rl_clear_signals();
      rl_set_signals();
      rl_completer_quote_characters = "\"";
