@@ -1,23 +1,25 @@
-// (Readline is GPLed, so that makes this file GPLed too, because this
-// file will only run if it's linked against readline.)
-//
-// Copyright (c) 2002 Tony Garnock-Jones
-// Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
-// Copyright (c) 2014 Alexej Magura (added a lot of history functions and more)
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation; either version 2 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+/****
+(Readline is GPLed, so that makes this file GPLed too, because this
+file will only run if it's linked against readline.)
+
+Copyright (c) 2002 Tony Garnock-Jones
+Copyright (c) 2006 Heath Johns (paren bouncing and auto-completion code)
+Copyright (c) 2014, 2015, 2016, 2017 Alexej Magura (added a lot of history functions and more)
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+****/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -304,6 +306,7 @@ void gnu_readline_init()
      rl_bind_keyseq("[D", highlight_paren);
 #endif
      rl_completion_entry_function = &gnu_readline_tab_complete;
+     int rl_catch_signals = 1;
      rl_clear_signals();
      rl_set_signals();
      rl_completer_quote_characters = "\"";

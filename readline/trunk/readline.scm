@@ -73,8 +73,8 @@
 
 (module readline (
 		  ;; variables
-		  session
-		  version
+		  *session*
+		  *version*
 
 		  ;; functions
 		  readline
@@ -185,14 +185,17 @@ C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 #|/////////////////////////////////|#
 ;;;; Public Variables
 #|/////////////////////////////////|#
-(define session '(#:load-history-file #t
-		  #:save-history-on-exit #t
-		  #:record-history #t
-		  #:verify-history-expansions #f))
-(define version "4.1.2")
+(define *version* (lambda () .version.))
+(define *session* (lambda () .session.))
 #|/////////////////////////////////|#
 ;;;; Private Variables
 #|/////////////////////////////////|#
+(define .session. '(#:load-history-file #t
+		  #:save-history-on-exit #t
+		  #:record-history #t
+		  #:verify-history-expansions #f))
+
+(define .version. "4.3.0")
 
 ;; get access to the quoting flag
 (define-foreign-variable is-quoted? int "rl_completion_quote_character")
@@ -212,7 +215,7 @@ C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 ;;;; Public C->Scheme Functions
 #|/////////////////////////////////|#
 (define (readline toplevel-prompt mid-expression-prompt)
-  (.readline. toplevel-prompt mid-expression-prompt (not (getkv session #:record-history))))
+  (.readline. toplevel-prompt mid-expression-prompt (not (getkv .session. #:record-history))))
 
 (define %signal-cleanup
   (foreign-lambda void "gnu_readline_signal_cleanup"))
@@ -292,7 +295,7 @@ C_regparm C_word C_enumerate_symbols(C_SYMBOL_TABLE *stable, C_word pos)
 	(##sys#read-from-string cmd-string))))
 
 (define (eval-last-history-line #!optional script)
-  (if (getkv session #:verify-history-expansions)
+  (if (getkv .session. #:verify-history-expansions)
       ((foreign-lambda void "insert_last_history_line" int int int) 1 (if script 1 0) 0)
       ((foreign-lambda void "run_last_history_line" int int) 1 (if script 1 0))))
 
@@ -339,14 +342,14 @@ it's supposed to take a string of history entries and transform it like so:
 		 ;(gnu-readline-write-history filename)
 		 (and (not (file-exists? histfile))
 		      (file-close (file-open histfile (+ open/append open/creat open/excl) (+ perm/irusr perm/iwusr))))
-		 (and (getkv session #:save-history-on-exit) (append-history histfile))
+		 (and (getkv .session. #:save-history-on-exit) (append-history histfile))
 		 (apply next args)))))
     (if (pair? nlines)
 	(set! nlines (car nlines))
 	(set! nlines 1000))
     (if nlines
 	(truncate-history histfile nlines))
-    (and (getkv session #:load-history-file) (read-history histfile))
+    (and (getkv .session. #:load-history-file) (read-history histfile))
     (hook exit-handler)
     (hook implicit-exit-handler)))
 
@@ -639,14 +642,14 @@ it's supposed to take a string of history entries and transform it like so:
 		  ",h-clear          Clear this session's history")
 
 (toplevel-command 'h-save (lambda ()
-				(let ((value (getkv readline#session #:save-history-on-exit)))
-				  (and (setkv! readline#session #:save-history-on-exit (not value))
+				(let ((value (getkv ..session.. #:save-history-on-exit)))
+				  (and (setkv! ..session.. #:save-history-on-exit (not value))
 				       (not value))))
 		  (pad ",h-save" "Enable/disable saving this session's history on exit (default: on)"))
 
 (toplevel-command 'h-rec (lambda ()
-			    (let ((value (getkv readline#session #:record-history)))
-			      (and (setkv! readline#session #:record-history (not value))
+			    (let ((value (getkv ..session.. #:record-history)))
+			      (and (setkv! ..session.. #:record-history (not value))
 				   (not value))))
 		  (pad ",h-rec" " Enable/disable recording history for this session (default: on)"))
 
