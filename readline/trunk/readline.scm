@@ -73,7 +73,7 @@
 
 (module readline (
 		  ;; variables
-		  *session*
+		  .session.
 		  *version*
 
 		  ;; functions
